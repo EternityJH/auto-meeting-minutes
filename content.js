@@ -250,6 +250,8 @@
       '[role="region"][aria-label*="Captions" i]',
       '[role="region"][aria-label*="자막"]',
       '[role="region"][aria-label*="subtitle" i]',
+      '[role="region"][aria-label*="字幕"]',
+      '[role="region"][aria-label*="會議字幕"]',
       '[jsname="dsyhDe"]'
     ];
 
@@ -277,26 +279,41 @@
       if (block.nodeType !== Node.ELEMENT_NODE) return;
       if (block.classList.contains('meet-cc-btn') || block.id === 'meet-cc-overlay') return;
 
-      // Extract speaker name
-      // Try class .NWpY1d first, then fall back to the first span
-      const speakerEl = block.querySelector('.NWpY1d') || block.querySelector('span');
-      const speaker = speakerEl ? speakerEl.innerText.trim() : 'Speaker';
-
-      // Extract text content
-      // Try class .ygicle.VbkSUe first, then legacy .iTTPOb, then text fallback
-      const textEl = block.querySelector('.ygicle.VbkSUe') || block.querySelector('.iTTPOb');
+      // Extract speaker name and text content using class selectors and structural DOM fallbacks
+      let speaker = 'Speaker';
       let text = '';
 
-      if (textEl) {
+      const speakerEl = block.querySelector('.NWpY1d');
+      const textEl = block.querySelector('.ygicle.VbkSUe') || block.querySelector('.iTTPOb');
+
+      if (speakerEl && textEl) {
+        speaker = speakerEl.innerText.trim();
         text = textEl.innerText.trim();
+      } else if (block.children && block.children.length >= 2) {
+        // Fallback: Use structural children (Child 0 is speaker name container, Child 1 is text container)
+        speaker = block.children[0].innerText.trim();
+        text = block.children[1].innerText.trim();
       } else {
-        // Fallback: Read whole block text and strip speaker name from beginning
-        let blockText = block.innerText || '';
-        if (speaker && blockText.startsWith(speaker)) {
-          blockText = blockText.substring(speaker.length).trim();
+        // Fallback: Read whole block text and extract speaker if possible
+        const blockText = (block.innerText || '').trim();
+        const firstSpan = block.querySelector('span');
+        if (firstSpan) {
+          const firstSpanText = firstSpan.innerText.trim();
+          if (firstSpanText && firstSpanText !== blockText) {
+            speaker = firstSpanText;
+            text = blockText.replace(speaker, '').trim();
+          } else {
+            speaker = 'Speaker';
+            text = blockText;
+          }
+        } else {
+          speaker = 'Speaker';
+          text = blockText;
         }
-        text = blockText;
       }
+
+      // Clean up whitespace and newlines from text
+      text = text.replace(/\s+/g, ' ').trim();
 
       // Ignore trivial or empty text
       if (!text || text.length < 2) return;
