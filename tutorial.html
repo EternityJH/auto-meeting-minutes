@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto Meeting Minutes 使用教學與架設指南</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #0b0f19;
+      --card-bg: #161e31;
+      --primary-gradient: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      --accent-gradient: linear-gradient(135deg, #38bdf8 0%, #a78bfa 100%);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --success-color: #10b981;
+      --code-bg: #090d16;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-primary);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+    }
+
+    header {
+      background: linear-gradient(180deg, rgba(139, 92, 246, 0.1) 0%, rgba(11, 15, 25, 0) 100%);
+      padding: 60px 20px;
+      text-align: center;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 36px;
+      font-weight: 800;
+      margin: 0 0 16px 0;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      font-size: 16px;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 40px auto;
+      padding: 0 20px 80px 20px;
+    }
+
+    section {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 40px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      scroll-margin-top: 40px;
+    }
+
+    h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      margin-top: 0;
+      margin-bottom: 24px;
+      color: #38bdf8;
+      border-left: 4px solid #8b5cf6;
+      padding-left: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .step-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .step-item {
+      margin-bottom: 28px;
+      position: relative;
+      padding-left: 44px;
+    }
+
+    .step-number {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 28px;
+      height: 28px;
+      background: var(--primary-gradient);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffffff;
+      box-shadow: 0 4px 10px rgba(139, 92, 246, 0.3);
+    }
+
+    .step-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .step-desc {
+      font-size: 14.5px;
+      color: var(--text-secondary);
+    }
+
+    .step-desc a {
+      color: #38bdf8;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .step-desc a:hover {
+      text-decoration: underline;
+    }
+
+    .code-container {
+      margin-top: 16px;
+      background-color: var(--code-bg);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 16px;
+      position: relative;
+    }
+
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 8px;
+    }
+
+    pre {
+      margin: 0;
+      overflow-x: auto;
+    }
+
+    code {
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      color: #38bdf8;
+    }
+
+    .btn-copy {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-primary);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .btn-copy:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .alert {
+      background: rgba(16, 185, 129, 0.05);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 20px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .alert-icon {
+      color: var(--success-color);
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .alert-content {
+      font-size: 13.5px;
+      color: #a7f3d0;
+    }
+
+    .alert-content strong {
+      color: #ffffff;
+    }
+
+    footer {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-size: 12.5px;
+      border-top: 1px solid var(--border-color);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Auto Meeting Minutes</h1>
+    <div class="subtitle">歡迎使用！本指南將帶領您一步步設定您的 Gemini API Key 與架設自動發送電子郵件的 Webhook 系統。</div>
+  </header>
+
+  <main>
+    <!-- Section 1: Gemini API Key -->
+    <section id="api-section">
+      <h2>如何取得 Gemini API Key</h2>
+      <ul class="step-list">
+        <li class="step-item">
+          <span class="step-number">1</span>
+          <div class="step-title">前往 Google AI Studio 網站</div>
+          <div class="step-desc">
+            打開瀏覽器，前往 <a href="https://aistudio.google.com/" target="_blank">Google AI Studio (aistudio.google.com)</a> 並使用您的 Google 帳號登入。
+          </div>
+        </li>
+        <li class="step-item">
+          <span class="step-number">2</span>
+          <div class="step-title">建立 API 金鑰 (Create API Key)</div>
+          <div class="step-desc">
+            在頁面左上角，點擊藍色的 <strong>「Get API key (取得 API 金鑰)」</strong> 按鈕，接著點擊 <strong>「Create API Key」</strong>。
+          </div>
+        </li>
+        <li class="step-item">
+          <span class="step-number">3</span>
+          <div class="step-title">選擇專案並生成</div>
+          <div class="step-desc">
+            選擇 <strong>「Create API key in new project (在新專案中建立)」</strong>。系統在生成完成後會顯示一串長金鑰。
+          </div>
+        </li>
+        <li class="step-item">
+          <span class="step-number">4</span>
+          <div class="step-title">複製並儲存至擴充功能</div>
+          <div class="step-desc">
+            點擊 <strong>「Copy」</strong> 複製該金鑰。返回本擴充功能的「設定」分頁，將其貼上到 <strong>Gemini API Key</strong> 輸入框中，最後點擊「儲存設定」。
+          </div>
+        </li>
+      </ul>
+      
+      <div class="alert">
+        <span class="alert-icon">💡</span>
+        <div class="alert-content">
+          <strong>安全提示：</strong>您的 API Key 將會 100% 儲存在您自己本機電腦的瀏覽器安全磁區中，擴充功能絕對不會將您的 Key 傳送給任何第三方。
+        </div>
+      </div>
+
+      <!-- Billing Tier Check Info Card -->
+      <div style="margin-top: 20px; background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 12px; padding: 20px;">
+        <span style="font-size: 20px; float: left; margin-right: 12px;">💰</span>
+        <div style="font-size: 13.5px; color: #fde68a; line-height: 1.6;">
+          <strong style="color: #ffffff; font-size: 14.5px; display: block; margin-bottom: 6px;">💡 實用提醒：如何確認我的 API Key 是「免費版」還是「付費計價版」？</strong>
+          <ul style="margin: 0; padding-left: 20px;">
+            <li><strong>預設為免費方案 (Free Tier)：</strong>當您剛建立 Google AI Studio 帳號並生成金鑰時，系統預設是<strong>完全免費</strong>的，每天有免費的使用額度限制，您不需要綁定任何信用卡。</li>
+            <li><strong>資料隱私安全差異：</strong>
+              <ul style="padding-left: 16px; margin-top: 4px;">
+                <li>在<strong>免費方案</strong>下，輸入的會議逐字稿內容可能會被 Google 作為模型訓練或產品改進用途。</li>
+                <li>若切換至<strong>按量計費方案 (Pay-as-you-go)</strong>，您的會議資料將會 100% 保密，Google 承諾絕對不會使用付費用戶的資料來訓練模型。如果您非常在意會議隱私，建議在 Google AI Studio 中開啟計費。</li>
+              </ul>
+            </li>
+            <li style="margin-top: 6px;"><strong>如何查看目前狀態：</strong>登入 <a href="https://aistudio.google.com/" target="_blank" style="color: #38bdf8; text-decoration: underline; font-weight: 500;">Google AI Studio</a> 後，點擊左側選單的 <strong>「Billing (計費)」</strong>：
+              <ul style="padding-left: 16px; margin-top: 4px;">
+                <li>若顯示「Pay-as-you-go is disabled / Set up billing」，代表為<strong>免費方案</strong>（完全免費，無信用卡扣款風險）。</li>
+                <li>若您已綁定 Google Cloud Billing 專案並啟用付款，則為<strong>付費方案</strong>。</li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+        <div style="clear: both;"></div>
+      </div>
+    </section>
+
+    <!-- Section 2: Webhook setup using Google Apps Script -->
+    <section id="gas-section">
+      <h2>如何利用 Google Apps Script 架設自動寄信 Webhook</h2>
+      <p style="color: var(--text-secondary); font-size: 14.5px; margin-top: 0; margin-bottom: 24px;">
+        您可以免費使用 Google Apps Script 將會議記錄直接自動寄送到多個信箱。此方式非常安全，完全不需要購買任何付費伺服器！
+      </p>
+
+      <ul class="step-list">
+        <li class="step-item">
+          <span class="step-number">1</span>
+          <div class="step-title">建立 Google Apps Script</div>
+          <div class="step-desc">
+            前往 <a href="https://script.google.com/" target="_blank">Google Apps Script 官網 (script.google.com)</a>，使用您的 Google 帳號登入後，點擊左上角的 <strong>「新增專案」</strong>。
+          </div>
+        </li>
+        <li class="step-item">
+          <span class="step-number">2</span>
+          <div class="step-title">貼上整合程式碼</div>
+          <div class="step-desc">
+            清空編輯器中預設的程式碼，複製並貼上底下的程式碼：
+            
+            <div class="code-container">
+              <div class="code-header">
+                <span>Google Apps Script 接收端程式碼</span>
+                <button class="btn-copy" id="btn-copy-gas">複製程式碼</button>
+              </div>
+              <pre><code id="gas-code">function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    
+    // 讀取收件人
+    var toEmails = data.targetEmail;
+    
+    // 💡 如果擴充功能中沒有設定收件人，則直接結束不寄信
+    if (!toEmails || toEmails.trim() === "") {
+      return ContentService.createTextOutput(JSON.stringify({status: "success", message: "No email provided, skipping."}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // 💡 優先使用 AI 整理出來的會議主旨，若無則回退到 Meet 網頁標題
+    var aiSubject = data.aiSubject || data.title;
+    var subject = "【自動會議紀錄】" + aiSubject;
+    
+    // 優先使用 summaryHtml (如果存在)，否則回退到 summaryPlainText 或 summary
+    var htmlContent = data.summaryHtml || "";
+    var plainTextContent = data.summaryPlainText || data.summary || "";
+    
+    // 建立郵件內文
+    var dateStr = new Date(data.startTime).toLocaleString('zh-TW');
+    
+    // 組合 HTML 格式的精美信件內容
+    var emailHtmlBody = 
+      "&lt;div style='font-family: system-ui, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; max-width: 850px; margin: 0 auto; line-height: 1.6; color: #1f2937; padding: 20px;'&gt;" +
+        "&lt;h2 style='color: #4f46e5; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 20px; font-size: 22px;'&gt;會議主題：" + data.title + "&lt;/h2&gt;" +
+        "&lt;div style='background-color: #f3f4f6; padding: 12px 18px; border-radius: 6px; font-size: 13.5px; color: #4b5563; margin-bottom: 25px;'&gt;" +
+          "&lt;strong&gt;會議時間：&lt;/strong&gt;" + dateStr + "&lt;br&gt;" +
+          "&lt;strong&gt;會議連結：&lt;/strong&gt;&lt;a href='" + data.url + "' style='color: #2563eb; text-decoration: none;'&gt;" + data.url + "&lt;/a&gt;" +
+        "&lt;/div&gt;" +
+        "&lt;div style='font-size: 15px; color: #1f2937;'&gt;" + 
+          htmlContent + 
+        "&lt;/div&gt;" +
+      "&lt;/div&gt;";
+
+    // 發送 HTML 郵件
+    MailApp.sendEmail({
+      to: toEmails,
+      subject: subject,
+      htmlBody: emailHtmlBody,
+      body: "您的瀏覽器不支援 HTML 郵件。以下為純文字備份：\n\n" + plainTextContent
+    });
+    
+    return ContentService.createTextOutput(JSON.stringify({status: "success"}))
+      .setMimeType(ContentService.MimeType.JSON);
+      
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({status: "error", message: error.toString()}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}</code></pre>
+            </div>
+          </div>
+        </li>
+        <li class="step-item">
+          <span class="step-number">3</span>
+          <div class="step-title">部署為網頁應用程式 (Deploy)</div>
+          <div class="step-desc">
+            1. 點擊編輯器右上角的 <strong>「部署」</strong> -> <strong>「新增部署」</strong>。<br>
+            2. 點擊左邊齒輪圖示，選取 <strong>「網頁應用程式」</strong>。<br>
+            3. 設定部署細節：
+            <ul style="margin-top: 4px; padding-left: 20px; font-size: 13.5px;">
+              <li>將專案執行身分設為：<strong>「我」 (您的帳號)</strong></li>
+              <li>將誰有權限存取設為：<strong>「所有人」 (Anyone)</strong> <span style="color:#ef4444;">(這步非常重要，擴充功能才能成功發送資料進去！)</span></li>
+            </ul>
+            4. 點擊下方的 <strong>「部署」</strong> 按鈕。
+          </div>
+        </li>
+        <li class="step-item">
+          <span class="step-number">4</span>
+          <div class="step-title">授權權限</div>
+          <div class="step-desc">
+            首次部署時，系統會要求您授權「傳送電子郵件」的權限：點擊 <strong>「授權存取」</strong>，選取您的 Google 帳號，點擊 <strong>「進階」</strong>，然後選取 <strong>「前往「未命名專案」(安全)」</strong>，最後點選 <strong>「允許」</strong>。
+          </div>
+        </li>
+        <li class="step-item">
+          <span class="step-number">5</span>
+          <div class="step-title">複製網頁應用程式網址 (Webhook URL)</div>
+          <div class="step-desc">
+            部署完成後，畫面上會顯示一串 <strong>「網頁應用程式網址」</strong> (通常以 `https://script.google.com/macros/s/...` 開頭)。複製此網址，貼回到擴充功能設定中的 <strong>Webhook URL</strong>，並儲存即可！
+          </div>
+        </li>
+      </ul>
+
+      <div class="alert" style="background: rgba(56, 189, 248, 0.05); border-color: rgba(56, 189, 248, 0.2);">
+        <span class="alert-icon" style="color: #38bdf8;">📢</span>
+        <div class="alert-content" style="color: #bae6fd;">
+          <strong>多收件人功能：</strong>您可以在擴充功能設定中，將「收件人 Email」設定為多個地址（用半形逗號隔開）。當自動整理完成時，此指令會一次將精美的 HTML 信件寄送給清單中的所有人！
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    &copy; 2026 Auto Meeting Minutes. All rights reserved. Made with love for seamless meetings.
+  </footer>
+
+  <script src="tutorial.js"></script>
+</body>
+</html>

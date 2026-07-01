@@ -1,0 +1,144 @@
+/* Google Meet Caption Capturer Floating Overlay Pill */
+
+#meet-cc-overlay {
+  position: fixed;
+  top: 16px;
+  right: 80px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(20, 20, 25, 0.75);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 30px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  color: #f1f3f4;
+  user-select: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: slide-in-top 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+#meet-cc-overlay.minimized {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.2s, background-color 0.2s, border-color 0.2s;
+}
+
+#meet-cc-overlay.minimized:hover {
+  transform: scale(1.1);
+  background: rgba(40, 40, 50, 0.9);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+#meet-cc-overlay.minimized * {
+  display: none;
+}
+
+#meet-cc-overlay.minimized .meet-cc-indicator {
+  display: block;
+  margin: 0;
+}
+
+/* Pulsing Red Dot for Capturing */
+.meet-cc-indicator {
+  width: 8px;
+  height: 8px;
+  background-color: #ff1744;
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.meet-cc-indicator.capturing::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ff1744;
+  border-radius: 50%;
+  animation: pulse-ring 1.5s cubic-bezier(0.215, 0.610, 0.355, 1) infinite;
+  box-sizing: border-box;
+}
+
+.meet-cc-indicator.paused {
+  background-color: #ffeb3b;
+}
+
+.meet-cc-indicator.paused::after {
+  display: none;
+}
+
+/* Text & Stats */
+.meet-cc-text {
+  font-weight: 500;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
+.meet-cc-count {
+  font-weight: 600;
+  color: #a855f7; /* Purple */
+  background: rgba(168, 85, 247, 0.15);
+  padding: 2px 6px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+/* Controls */
+.meet-cc-btn {
+  background: none;
+  border: none;
+  color: #9aa0a6;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.meet-cc-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.meet-cc-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Animations */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.33);
+    opacity: 1;
+  }
+  80%, 100% {
+    transform: scale(1.3);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-in-top {
+  0% {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

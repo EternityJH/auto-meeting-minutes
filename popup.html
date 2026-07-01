@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>Auto Meeting Minutes</title>
+  <link rel="stylesheet" href="popup.css">
+  <!-- Link Inter Font from Google Fonts for premium look -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="pulse-dot active" id="header-pulse"></div>
+      <h1>Auto Meeting Minutes</h1>
+    </div>
+    <span class="version">v1.0.0</span>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="active-recording">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 12 10 12 10-4.48 10-12S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.53c-.26-.81-1-1.4-1.9-1.4h-1v-3c0-.55-.45-1-1-1h-6v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.4z"/>
+      </svg>
+      會議錄製
+    </button>
+    <button class="tab-btn" data-tab="history-ai">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+      </svg>
+      會議整理
+    </button>
+    <button class="tab-btn" data-tab="settings">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3-1.57-3-3s1.07-3 3-3 3 1.57 3 3-1.07 3-3 3z"/>
+      </svg>
+      設定
+    </button>
+  </nav>
+
+  <!-- Content Containers -->
+  <main class="content-area">
+    <!-- Active Recording Tab -->
+    <section id="active-recording" class="tab-content active">
+      <div class="card active-status-card">
+        <div class="status-indicator">
+          <div class="indicator-dot red-pulse" id="status-dot"></div>
+          <span class="status-label" id="status-text">偵測中...</span>
+        </div>
+        <h2 id="meeting-title">未在會議中</h2>
+        <p class="meeting-url" id="meeting-url">-</p>
+        <div class="stats-row">
+          <div class="stat-box">
+            <span class="stat-num" id="line-count">0</span>
+            <span class="stat-label">擷取行數</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num" id="word-count">0</span>
+            <span class="stat-label">字數</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-num" id="record-time">00:00</span>
+            <span class="stat-label">錄製時長</span>
+          </div>
+        </div>
+        <div class="transcript-preview-box">
+          <h3>即時字幕預覽</h3>
+          <div class="transcript-lines" id="live-transcript">
+            <p class="placeholder-text">等待 Google Meet 開啟 CC 字幕...</p>
+          </div>
+        </div>
+        <div class="action-btn-row">
+          <button class="btn btn-secondary" id="btn-toggle-capture">暫停錄製</button>
+          <button class="btn btn-danger" id="btn-end-meeting">結束並整理</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- History & AI Summarizer Tab -->
+    <section id="history-ai" class="tab-content">
+      <div class="split-view">
+        <div class="history-sidebar">
+          <h3>歷史會議列表</h3>
+          <div class="history-list" id="history-list-container">
+            <p class="placeholder-text">尚無會議紀錄</p>
+          </div>
+          <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); text-align: center;">
+            <button id="btn-clear-history" style="background: transparent; border: none; color: #ef4444; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; transition: opacity 0.2s; opacity: 0.8; margin-bottom: 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+              </svg>
+              清除所有歷史紀錄
+            </button>
+            <span style="font-size: 9px; color: var(--text-muted); display: block; line-height: 1.3;">（系統預設保留最新 30 筆會議紀錄，超出將自動覆寫）</span>
+          </div>
+        </div>
+        
+        <!-- Right: AI Summarizer & Actions -->
+        <div class="ai-workspace">
+          <div class="card workspace-card">
+            <div class="workspace-header" id="workspace-header">
+              <div>
+                <h2 id="selected-title">請選擇一場會議</h2>
+                <span class="meeting-date" id="selected-date">-</span>
+              </div>
+              <div class="action-btn-row">
+                <button class="btn btn-secondary btn-sm" id="btn-copy-raw" style="display:none;">複製逐字稿</button>
+                <button class="btn btn-secondary btn-sm" id="btn-download-raw" style="display:none;">下載逐字稿</button>
+              </div>
+            </div>
+            
+            <div class="workspace-body">
+              <!-- AI Summary Result -->
+              <div class="summary-container" id="summary-result-box">
+                <div class="ai-placeholder" id="ai-placeholder-msg">
+                  <svg viewBox="0 0 24 24" width="48" height="48" fill="rgba(255,255,255,0.2)">
+                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                  </svg>
+                  <p>選擇左側會議，點擊下方按鈕以透過 Gemini API 生成會議紀要。</p>
+                </div>
+                <div class="summary-content markdown-body" id="summary-content" style="display:none;"></div>
+              </div>
+            </div>
+
+            <div class="workspace-footer" id="workspace-footer" style="display:none;">
+              <button class="btn btn-primary btn-large" id="btn-run-ai">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                  <path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7zm2.85 11.1l-.85.6V16h-4v-2.3l-.85-.6C7.8 12.16 7 10.63 7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.63-.8 3.16-2.15 4.1z"/>
+                </svg>
+                Gemini 一鍵整理會議紀錄
+              </button>
+              <div class="export-actions-row" id="export-actions-row" style="display:none;">
+                <button class="btn btn-secondary" id="btn-email">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                    <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                  </svg>
+                  發送郵件
+                </button>
+                <button class="btn btn-secondary" id="btn-webhook">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                    <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-2 14H6v-2h12v2zm0-4H6v-2h12v2zm0-4H6V8h12v2z"/>
+                  </svg>
+                  Webhook 發送
+                </button>
+                <button class="btn btn-secondary" id="btn-copy">複製紀錄</button>
+                <button class="btn btn-secondary" id="btn-download-html">下載 HTML 檔</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings Tab -->
+    <section id="settings" class="tab-content">
+      <div class="card settings-card">
+        <h2>系統整合設定</h2>
+        <div class="form-group">
+          <div class="form-label-row">
+            <label for="gemini-key">Gemini API Key</label>
+            <a href="tutorial.html" target="_blank" class="help-link">如何取得 API Key？</a>
+          </div>
+          <input type="password" id="gemini-key" placeholder="輸入您的 Gemini API Key">
+          <span class="help-text">用於會議紀錄自動整理，資料僅存於瀏覽器 local storage。</span>
+        </div>
+        <div class="form-group">
+          <label for="gemini-model">Gemini 模型</label>
+          <select id="gemini-model">
+            <option value="gemini-3.5-flash">Gemini 3.5 Flash (最新高效能 - 推薦)</option>
+            <option value="gemini-3.1-pro">Gemini 3.1 Pro (最新旗艦推理，適用極長或複雜會議)</option>
+            <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite (極速、超低耗能)</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash (高效穩定款)</option>
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro (推理重型款)</option>
+            <option value="gemini-1.5-flash">Gemini 1.5 Flash (經典款)</option>
+            <option value="gemini-1.5-pro">Gemini 1.5 Pro (經典長文本)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="target-email">收件人 Email</label>
+          <input type="text" id="target-email" placeholder="email1@gmail.com, email2@gmail.com">
+          <span class="help-text">預設收件地址。若要傳送給多個人，請使用「英文半形逗號 (,)」隔開。</span>
+        </div>
+        <div class="form-group">
+          <div class="form-label-row">
+            <label for="webhook-url">Webhook URL (選填)</label>
+            <a href="tutorial.html#gas-section" target="_blank" class="help-link">如何架設自動寄信 Webhook？</a>
+          </div>
+          <input type="url" id="webhook-url" placeholder="https://script.google.com/macros/s/...">
+          <span class="help-text">填寫 Google Apps Script 網頁應用程式網址，用於自動寄信。</span>
+        </div>
+        <div class="form-group">
+          <label for="download-folder">本機存檔子資料夾</label>
+          <input type="text" id="download-folder" value="auto-meeting-minutes">
+          <span class="help-text">位於「下載 (Downloads)」目錄下。</span>
+        </div>
+        <div class="form-group checkbox-group">
+          <input type="checkbox" id="auto-download" checked>
+          <label for="auto-download">會議結束時自動下載會議紀錄檔案 (.html)</label>
+        </div>
+        <div class="form-group checkbox-group">
+          <input type="checkbox" id="auto-summarize" checked>
+          <label for="auto-summarize">會議結束時自動進行 AI 整理</label>
+        </div>
+        <div class="form-group checkbox-group">
+          <input type="checkbox" id="auto-webhook">
+          <label for="auto-webhook" id="label-auto-webhook">AI 整理完成後自動傳送 Webhook</label>
+        </div>
+        <div class="form-group checkbox-group">
+          <input type="checkbox" id="auto-enable-cc" checked>
+          <label for="auto-enable-cc">加入會議時自動開啟 CC 字幕</label>
+        </div>
+        <div class="form-group">
+          <label for="prompt-template">AI 整理 Prompt 指示</label>
+          <textarea id="prompt-template" rows="5" placeholder="例如：請將會議逐字稿整理成精美的會議紀錄，包含主旨、討論重點、決議與待辦事項..."></textarea>
+          <span class="help-text">請輸入給 AI 的整理指令。系統會自動在下方附上會議逐字稿。</span>
+        </div>
+        <div class="settings-actions">
+          <span class="save-status" id="save-status">設定已儲存</span>
+          <button class="btn btn-primary" id="btn-save-settings">儲存設定</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>
