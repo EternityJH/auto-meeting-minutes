@@ -4,10 +4,15 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // --- UI Elements ---
+  // Pre-warm the offscreen document immediately when the popup is opened
+  chrome.runtime.sendMessage({ type: 'PRE_WARM_OFFSCREEN' }).catch(() => {});
+
+  try {
+    // --- UI Elements ---
   const tabButtons = document.querySelectorAll('.tab-btn');
   const tabContents = document.querySelectorAll('.tab-content');
   const headerPulse = document.getElementById('header-pulse');
+  let currentActiveTabId = null;
 
   // Active Recording Tab elements
   const statusDot = document.getElementById('status-dot');
@@ -19,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const recordTime = document.getElementById('record-time');
   const liveTranscript = document.getElementById('live-transcript');
   const btnToggleCapture = document.getElementById('btn-toggle-capture');
+  const btnToggleRecording = document.getElementById('btn-toggle-recording');
   const btnEndMeeting = document.getElementById('btn-end-meeting');
 
   // History & AI Tab elements
@@ -39,9 +45,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnDownloadHtml = document.getElementById('btn-download-html');
 
   // Settings Tab elements
+  const selectLlmSource = document.getElementById('llm-source');
+  const panelGeminiSettings = document.getElementById('gemini-settings-panel');
+  const panelCustomLlm = document.getElementById('custom-llm-panel');
   const inputGeminiKey = document.getElementById('gemini-key');
   const selectGeminiModel = document.getElementById('gemini-model');
-  const inputTargetEmail = document.getElementById('target-email');
+  const inputCustomLlmUrl = document.getElementById('custom-llm-url');
+  const inputCustomLlmKey = document.getElementById('custom-llm-key');
+  const btnAddEmailGroup = document.getElementById('btn-add-email-group');
+  const emailGroupsContainer = document.getElementById('email-groups-container');
+  const selectDefaultAutoGroup = document.getElementById('default-auto-group');
   const inputWebhookUrl = document.getElementById('webhook-url');
   const inputDownloadFolder = document.getElementById('download-folder');
   const checkboxAutoDownload = document.getElementById('auto-download');
@@ -49,15 +62,222 @@ document.addEventListener('DOMContentLoaded', () => {
   const checkboxAutoWebhook = document.getElementById('auto-webhook');
   const labelAutoWebhook = document.getElementById('label-auto-webhook');
   const checkboxAutoEnableCC = document.getElementById('auto-enable-cc');
+  const checkboxEnableRecordingWorkflow = document.getElementById('enable-recording-workflow');
+  const sectionConfigAi = document.getElementById('section-config-ai');
+  const sectionConfigRecording = document.getElementById('section-config-recording');
+  const sectionConfigWebhook = document.getElementById('section-config-webhook');
+  const sectionConfigLocal = document.getElementById('section-config-local');
   const textareaPromptTemplate = document.getElementById('prompt-template');
   const btnSaveSettings = document.getElementById('btn-save-settings');
   const saveStatus = document.getElementById('save-status');
+  const selectRecordMode = document.getElementById('select-record-mode');
+  const selectCaptureSource = document.getElementById('select-capture-source');
+  const groupCaptureSource = document.getElementById('group-capture-source');
+  const selectAiInputSource = document.getElementById('select-ai-input-source');
+  const aiInputSourceHelp = document.getElementById('ai-input-source-help');
+  const checkboxRecordMic = document.getElementById('checkbox-record-mic');
+  const selectWebmUploadTarget = document.getElementById('select-webm-upload-target');
+  const panelWebmWebhookConfig = document.getElementById('panel-webm-webhook-config');
+  const inputWebmWebhookUrl = document.getElementById('webm-webhook-url');
+  const panelNextcloudConfig = document.getElementById('panel-nextcloud-config');
+  const inputNextcloudWebdavUrl = document.getElementById('nextcloud-webdav-url');
+  const inputNextcloudUsername = document.getElementById('nextcloud-username');
+  const inputNextcloudPassword = document.getElementById('nextcloud-password');
+
+  // Email Modal elements
+  const emailModalOverlay = document.getElementById('email-modal-overlay');
+  const modalTitle = document.getElementById('modal-title');
+  const btnCloseEmailModal = document.getElementById('btn-close-email-modal');
+  const selectModalGroup = document.getElementById('modal-group-select');
+  const textareaModalEmails = document.getElementById('modal-emails-input');
+  const btnCancelEmailModal = document.getElementById('btn-cancel-email-modal');
+  const btnConfirmEmailSend = document.getElementById('btn-confirm-email-send');
+
+  // System Logs Elements
+  const logListContainer = document.getElementById('log-list-container');
+  const logFilterModule = document.getElementById('log-filter-module');
+  const logFilterType = document.getElementById('log-filter-type');
+  const btnClearLogs = document.getElementById('btn-clear-logs');
 
   // --- State Variables ---
   let activeTab = 'active-recording';
   let activePollingInterval = null;
   let selectedMeeting = null; // Currently selected meeting from history
   let globalSettings = {};
+  let activeJobPollIntervals = {};
+
+  const saveCompletedSummaryToHistory = (sessionId, generatedText, aiDurationSeconds) => {
+    let summaryText = generatedText;
+    let optimizedTranscript = "";
+    const splitTokens = ['=== [優化逐字稿] ===', '===[優化逐字稿]===', '優化逐字稿', '=== [優化對話] ===', '=== [優化逐字稿]'];
+    for (const token of splitTokens) {
+      if (generatedText.includes(token)) {
+        const parts = generatedText.split(token);
+        summaryText = parts[0].replace('=== [會議紀錄] ===', '').replace('=== [會議記錄] ===', '').trim();
+        optimizedTranscript = parts[1].trim();
+        break;
+      }
+    }
+
+    chrome.storage.local.get(['history'], (res) => {
+      const history = res.history || [];
+      const index = history.findIndex(s => s.id === sessionId);
+      if (index !== -1) {
+        history[index].summary = summaryText;
+        history[index].optimizedTranscript = optimizedTranscript;
+        history[index].summaryTime = Date.now();
+        if (aiDurationSeconds !== null) {
+          history[index].aiDurationSeconds = aiDurationSeconds;
+        }
+        chrome.storage.local.set({ history: history });
+      }
+    });
+  };
+
+  const startCustomJobPolling = (sessionId, jobId, baseUrl) => {
+    if (activeJobPollIntervals[sessionId]) return;
+
+    activeJobPollIntervals[sessionId] = setInterval(async () => {
+      try {
+        const statusRes = await fetch(`${baseUrl}/meeting-llm/api/jobs/${jobId}`);
+        if (!statusRes.ok) throw new Error(`HTTP ${statusRes.status}`);
+
+        const jobStatus = await statusRes.json();
+        
+        chrome.storage.local.get(['autoProcessingSessions'], (res) => {
+          const map = res.autoProcessingSessions || {};
+          if (jobStatus.status === 'completed') {
+            clearInterval(activeJobPollIntervals[sessionId]);
+            delete activeJobPollIntervals[sessionId];
+            delete map[sessionId];
+            chrome.storage.local.set({ autoProcessingSessions: map });
+            
+            saveCompletedSummaryToHistory(sessionId, jobStatus.result, jobStatus.ai_duration_seconds);
+            if (selectedMeeting && selectedMeeting.id === sessionId) {
+              processSummaryResult(jobStatus.result, jobStatus.ai_duration_seconds);
+            }
+          } else if (jobStatus.status === 'failed') {
+            clearInterval(activeJobPollIntervals[sessionId]);
+            delete activeJobPollIntervals[sessionId];
+            delete map[sessionId];
+            chrome.storage.local.set({ autoProcessingSessions: map });
+            
+            if (selectedMeeting && selectedMeeting.id === sessionId) {
+              handleAiError(new Error(jobStatus.error || '閘道器端執行失敗'));
+            }
+          } else {
+            map[sessionId] = {
+              status: jobStatus.status,
+              jobId: jobId,
+              queue_position: jobStatus.queue_position || 1,
+              estimated_wait_seconds: jobStatus.estimated_wait_seconds || 30,
+              progress_percent: jobStatus.progress_percent || 0,
+              estimated_remaining_seconds: jobStatus.estimated_remaining_seconds || 15,
+              timestamp: Date.now()
+            };
+            chrome.storage.local.set({ autoProcessingSessions: map });
+          }
+        });
+      } catch (err) {
+        clearInterval(activeJobPollIntervals[sessionId]);
+        delete activeJobPollIntervals[sessionId];
+        chrome.storage.local.get(['autoProcessingSessions'], (res) => {
+          const map = res.autoProcessingSessions || {};
+          delete map[sessionId];
+          chrome.storage.local.set({ autoProcessingSessions: map });
+        });
+        if (selectedMeeting && selectedMeeting.id === sessionId) {
+          handleAiError(err);
+        }
+      }
+    }, 3000);
+  };
+
+  const popupLogEvent = (module, logType, message) => {
+    chrome.runtime.sendMessage({
+      type: 'ADD_LOG_ENTRY',
+      module,
+      logType,
+      message
+    }).catch(() => {});
+  };
+
+  // --- Load and Render System Logs ---
+  const loadSystemLogs = () => {
+    if (!logListContainer) return;
+
+    chrome.runtime.sendMessage({ type: 'GET_SYSTEM_LOGS' }, (res) => {
+      try {
+        const allLogs = (res && res.logs) ? res.logs : [];
+        const filterModule = logFilterModule ? logFilterModule.value : 'all';
+        const filterType = logFilterType ? logFilterType.value : 'all';
+
+        // Filter logs
+        const filteredLogs = allLogs.filter(log => {
+          if (!log) return false;
+          const matchesModule = filterModule === 'all' || log.module === filterModule;
+          const matchesType = filterType === 'all' || log.type === filterType;
+          return matchesModule && matchesType;
+        });
+
+        // Clear container
+        logListContainer.innerHTML = '';
+
+        if (filteredLogs.length === 0) {
+          logListContainer.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 11px;">
+              無符合篩選條件的日誌紀錄
+            </div>
+          `;
+          return;
+        }
+
+        // Render logs
+        filteredLogs.forEach(log => {
+          const logItem = document.createElement('div');
+          logItem.className = 'log-item';
+
+          let timeStr = 'N/A';
+          let dateStr = 'N/A';
+          if (log.timestamp) {
+            try {
+              const d = new Date(log.timestamp);
+              timeStr = d.toLocaleTimeString('zh-TW', { hour12: false });
+              dateStr = d.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' });
+            } catch (dateErr) {
+              console.error("[Popup] Date format error:", dateErr);
+            }
+          }
+          
+          let typeText = 'INFO';
+          if (log.type === 'success') typeText = '成功';
+          if (log.type === 'error') typeText = '錯誤';
+          if (log.type === 'warning') typeText = '警告';
+
+          let meetingInfo = '';
+          if (log.meetingTitle) {
+            meetingInfo = `<div class="log-meeting">會議: ${log.meetingTitle}</div>`;
+          }
+
+          logItem.innerHTML = `
+            <div class="log-header-row">
+              <div>
+                <span class="log-badge ${log.type || 'info'}">${typeText}</span>
+                <span class="log-module-tag">[${log.module}]</span>
+              </div>
+              <span class="log-time">${dateStr} ${timeStr}</span>
+            </div>
+            <div class="log-msg">${log.message || ''}</div>
+            ${meetingInfo}
+          `;
+          logListContainer.appendChild(logItem);
+        });
+      } catch (err) {
+        console.error("[Popup] loadSystemLogs crashed:", err);
+        logListContainer.innerHTML = `<div style="color:red;padding:10px;font-size:11px;">加載日誌出錯: ${err.message}</div>`;
+      }
+    });
+  };
 
   // --- Tab Switching ---
   const switchTab = (tabId) => {
@@ -85,6 +305,8 @@ document.addEventListener('DOMContentLoaded', () => {
       stopActiveRecordingPolling();
       if (tabId === 'history-ai') {
         loadHistoryList();
+      } else if (tabId === 'system-logs') {
+        loadSystemLogs();
       }
     }
   };
@@ -94,6 +316,44 @@ document.addEventListener('DOMContentLoaded', () => {
       switchTab(btn.getAttribute('data-tab'));
     });
   });
+
+  // System Logs Listeners
+  if (logFilterModule) {
+    logFilterModule.addEventListener('change', loadSystemLogs);
+  }
+  if (logFilterType) {
+    logFilterType.addEventListener('change', loadSystemLogs);
+  }
+  if (btnClearLogs) {
+    btnClearLogs.addEventListener('click', () => {
+      if (confirm('您確定要清除所有的運行日誌嗎？')) {
+        chrome.runtime.sendMessage({ type: 'CLEAR_SYSTEM_LOGS' }, () => {
+          loadSystemLogs();
+        });
+      }
+    });
+  }
+
+  const btnDownloadLogs = document.getElementById('btn-download-logs');
+  if (btnDownloadLogs) {
+    btnDownloadLogs.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'GET_SYSTEM_LOGS' }, (res) => {
+        const logs = (res && res.logs) ? res.logs : [];
+        if (logs.length === 0) {
+          alert('目前沒有任何運行日誌。');
+          return;
+        }
+        const text = logs.map(log => `[${log.timestamp}] [${log.module}] [${log.type}] ${log.message}`).join('\n');
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        chrome.downloads.download({
+          url: url,
+          filename: `auto-meeting-minutes-debug-logs.txt`,
+          saveAs: true
+        });
+      });
+    });
+  }
 
   // Dynamic validation for webhook settings
   const updateWebhookSettingsUI = () => {
@@ -126,6 +386,152 @@ document.addEventListener('DOMContentLoaded', () => {
   // Add event listeners to trigger UI updates
   inputWebhookUrl.addEventListener('input', updateWebhookSettingsUI);
   checkboxAutoSummarize.addEventListener('change', updateWebhookSettingsUI);
+  if (selectLlmSource && panelGeminiSettings && panelCustomLlm) {
+    selectLlmSource.addEventListener('change', () => {
+      const isGemini = selectLlmSource.value === 'gemini';
+      panelGeminiSettings.style.display = isGemini ? 'block' : 'none';
+      panelCustomLlm.style.display = isGemini ? 'none' : 'block';
+    });
+  }
+
+  // --- Render Email Groups UI in Settings ---
+  const renderEmailGroupsSettings = () => {
+    if (!emailGroupsContainer) return;
+    emailGroupsContainer.innerHTML = '';
+    const groups = globalSettings.emailGroups || [];
+    
+    groups.forEach((group, index) => {
+      const row = document.createElement('div');
+      row.className = 'email-group-item';
+      
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'group-name-input';
+      nameInput.value = group.name;
+      nameInput.placeholder = '群組名稱';
+      nameInput.addEventListener('change', (e) => {
+        group.name = e.target.value.trim() || `群組 ${index + 1}`;
+        updateDefaultAutoGroupDropdown();
+      });
+      
+      const emailsInput = document.createElement('input');
+      emailsInput.type = 'text';
+      emailsInput.className = 'group-emails-input';
+      emailsInput.value = group.emails;
+      emailsInput.placeholder = '信箱1@gmail.com, 信箱2@gmail.com';
+      emailsInput.addEventListener('change', (e) => {
+        group.emails = e.target.value.trim();
+      });
+      
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn-delete-group';
+      deleteBtn.title = '刪除群組';
+      deleteBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+          <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+        </svg>
+      `;
+      deleteBtn.addEventListener('click', () => {
+        if (groups.length <= 1) {
+          alert('請至少保留一個收件人群組！');
+          return;
+        }
+        globalSettings.emailGroups.splice(index, 1);
+        renderEmailGroupsSettings();
+        updateDefaultAutoGroupDropdown();
+      });
+      
+      row.appendChild(nameInput);
+      row.appendChild(emailsInput);
+      row.appendChild(deleteBtn);
+      emailGroupsContainer.appendChild(row);
+    });
+  };
+
+  const updateDefaultAutoGroupDropdown = () => {
+    if (!selectDefaultAutoGroup) return;
+    const prevVal = selectDefaultAutoGroup.value || globalSettings.defaultAutoGroup;
+    selectDefaultAutoGroup.innerHTML = '';
+    const groups = globalSettings.emailGroups || [];
+    
+    groups.forEach(group => {
+      const opt = document.createElement('option');
+      opt.value = group.name;
+      opt.innerText = group.name;
+      selectDefaultAutoGroup.appendChild(opt);
+    });
+    
+    // Restore value
+    if (groups.some(g => g.name === prevVal)) {
+      selectDefaultAutoGroup.value = prevVal;
+    } else if (groups.length > 0) {
+      selectDefaultAutoGroup.value = groups[0].name;
+    }
+  };
+
+  // Add event listener to create new group
+  if (btnAddEmailGroup) {
+    btnAddEmailGroup.addEventListener('click', () => {
+      if (!globalSettings.emailGroups) {
+        globalSettings.emailGroups = [];
+      }
+      globalSettings.emailGroups.push({
+        name: `群組 ${globalSettings.emailGroups.length + 1}`,
+        emails: ''
+      });
+      renderEmailGroupsSettings();
+      updateDefaultAutoGroupDropdown();
+    });
+  }
+
+  const updateWebmUploadTargetUI = () => {
+    if (!selectWebmUploadTarget) return;
+    const val = selectWebmUploadTarget.value;
+    if (panelWebmWebhookConfig) panelWebmWebhookConfig.style.display = val === 'webhook' ? 'block' : 'none';
+    if (panelNextcloudConfig) panelNextcloudConfig.style.display = val === 'nextcloud' ? 'block' : 'none';
+  };
+
+  if (selectWebmUploadTarget) {
+    selectWebmUploadTarget.addEventListener('change', updateWebmUploadTargetUI);
+  }
+
+  const updateAiInputSourceUI = () => {
+    if (!selectAiInputSource || !aiInputSourceHelp) return;
+    const val = selectAiInputSource.value;
+    if (val === 'file') {
+      aiInputSourceHelp.innerText = '將自動將錄好的 WebM 音檔上傳至 Gemini 官方雲端，供模型進行語音/畫面直接分析。';
+      aiInputSourceHelp.style.color = '#a78bfa'; // Violet highlight
+    } else {
+      aiInputSourceHelp.innerText = '預設讀取會議中擷取的 CC 字幕進行整理。';
+      aiInputSourceHelp.style.color = '';
+    }
+  };
+
+  if (selectAiInputSource) {
+    selectAiInputSource.addEventListener('change', updateAiInputSourceUI);
+  }
+
+  const updateDynamicSettingsUI = () => {
+    if (sectionConfigAi && checkboxAutoSummarize) {
+      sectionConfigAi.style.display = checkboxAutoSummarize.checked ? 'block' : 'none';
+    }
+    if (sectionConfigRecording && checkboxEnableRecordingWorkflow) {
+      sectionConfigRecording.style.display = checkboxEnableRecordingWorkflow.checked ? 'block' : 'none';
+    }
+    if (sectionConfigWebhook && checkboxAutoWebhook) {
+      sectionConfigWebhook.style.display = checkboxAutoWebhook.checked ? 'block' : 'none';
+    }
+    if (sectionConfigLocal && checkboxAutoDownload && checkboxEnableRecordingWorkflow) {
+      sectionConfigLocal.style.display = (checkboxAutoDownload.checked || checkboxEnableRecordingWorkflow.checked) ? 'block' : 'none';
+    }
+    if (groupCaptureSource && selectRecordMode && checkboxEnableRecordingWorkflow) {
+      groupCaptureSource.style.display = (checkboxEnableRecordingWorkflow.checked && selectRecordMode.value === 'video') ? 'block' : 'none';
+    }
+  };
+
+  [checkboxAutoSummarize, checkboxEnableRecordingWorkflow, checkboxAutoWebhook, checkboxAutoDownload, selectRecordMode].forEach(cb => {
+    if (cb) cb.addEventListener('change', updateDynamicSettingsUI);
+  });
 
   // --- Load Settings ---
   const loadSettings = async () => {
@@ -141,7 +547,21 @@ document.addEventListener('DOMContentLoaded', () => {
           autoWebhook: false,
           autoEnableCC: true,
           summaryModel: 'gemini-3.5-flash',
-          promptTemplate: '你是一位專業的會議記錄秘書。請協助我整理會議逐字稿。請務必遵守以下輸出格式，將內容分為兩個區塊，並使用 === [標題] === 包裝：\n\n=== [會議紀錄] ===\n- 會議主旨：[會議主旨名稱]\n- 會議摘要與決議事項：\n  ...（請在此處輸出整理好的條列式會議精要）\n- 待辦事項與指派對象（若有）\n\n=== [優化逐字稿] ===\n（請在此處將輸入的每一句對話，修正其語音辨識錯誤、同音異字並消除贅字，依照發言順序輸出，每行格式固定為：\n[時間 - 說話者]: 優化後的對話內容）'
+          promptTemplate: '你是一位專業的會議記錄秘書。請協助我整理會議逐字稿。請務必遵守以下輸出格式，將內容分為兩個區塊，並使用 === [標題] === 包裝：\n\n=== [會議紀錄] ===\n- 會議主旨：[會議主旨名稱]\n- 會議摘要與決議事項：\n  ...（請在此處輸出整理好的條列式會議精要）\n- 待辦事項與指派對象（若有）\n\n=== [優化逐字稿] ===\n（請在此處將輸入的每一句對話，修正其語音辨識錯誤、同音異字並消除贅字，依照發言順序輸出，每行格式固定為：\n[時間 - 說話者]: 優化後的對話內容）',
+          emailGroups: [],
+          defaultAutoGroup: '',
+          llmSource: 'gemini',
+          customLlmEnable: false,
+          customLlmUrl: '',
+          customLlmKey: '',
+          customLlmModel: '',
+          webmUploadTarget: 'none',
+          webmWebhookUrl: '',
+          nextcloudWebdavUrl: '',
+          nextcloudUsername: '',
+          nextcloudPassword: '',
+          aiInputSource: 'text',
+          enableRecordingWorkflow: false
         };
         globalSettings = { ...defaultSettings, ...result.settings };
 
@@ -151,21 +571,66 @@ document.addEventListener('DOMContentLoaded', () => {
           globalSettings.autoWebhook = result.settings.autoSummarizeAndWebhook;
         }
 
+        // Setup default emailGroups if not present (migration)
+        if (!globalSettings.emailGroups || globalSettings.emailGroups.length === 0) {
+          globalSettings.emailGroups = [
+            { name: '預設群組', emails: globalSettings.targetEmail || '' }
+          ];
+        }
+        if (!globalSettings.defaultAutoGroup) {
+          globalSettings.defaultAutoGroup = globalSettings.emailGroups[0].name;
+        }
+
         // Populate Form Fields
         inputGeminiKey.value = globalSettings.geminiApiKey || '';
         selectGeminiModel.value = globalSettings.summaryModel || 'gemini-3.5-flash';
-        inputTargetEmail.value = globalSettings.targetEmail || '';
         inputWebhookUrl.value = globalSettings.webhookUrl || '';
         inputDownloadFolder.value = globalSettings.downloadFolder || 'auto-meeting-minutes';
         checkboxAutoDownload.checked = !!globalSettings.autoDownloadOnEnd;
         checkboxAutoSummarize.checked = !!globalSettings.autoSummarize;
         checkboxAutoWebhook.checked = !!globalSettings.autoWebhook;
         checkboxAutoEnableCC.checked = globalSettings.autoEnableCC !== undefined ? !!globalSettings.autoEnableCC : true;
+        checkboxEnableRecordingWorkflow.checked = !!globalSettings.enableRecordingWorkflow;
         textareaPromptTemplate.value = globalSettings.promptTemplate || '';
+
+        // Populate Custom LLM Fields and set panel visibility mutually exclusively
+        if (globalSettings.llmSource === 'gateway') {
+          globalSettings.llmSource = 'custom';
+        }
+        if (!globalSettings.llmSource) {
+          globalSettings.llmSource = globalSettings.customLlmEnable ? 'custom' : 'gemini';
+        }
+        selectLlmSource.value = globalSettings.llmSource;
+        const source = globalSettings.llmSource;
+        panelGeminiSettings.style.display = source === 'gemini' ? 'block' : 'none';
+        panelCustomLlm.style.display = source === 'gemini' ? 'none' : 'block';
+        
+        inputCustomLlmUrl.value = globalSettings.customLlmUrl || '';
+        inputCustomLlmKey.value = globalSettings.customLlmKey || '';
+
+        // Render groups UI
+        renderEmailGroupsSettings();
+        updateDefaultAutoGroupDropdown();
+        selectDefaultAutoGroup.value = globalSettings.defaultAutoGroup;
 
         // Update UI states
         updateWebhookSettingsUI();
 
+        selectRecordMode.value = globalSettings.recordMode || 'none';
+        if (selectCaptureSource) {
+          selectCaptureSource.value = globalSettings.captureSource || 'tab';
+        }
+        checkboxRecordMic.checked = globalSettings.recordIncludeMic !== undefined ? !!globalSettings.recordIncludeMic : true;
+        selectWebmUploadTarget.value = globalSettings.webmUploadTarget || 'none';
+        inputWebmWebhookUrl.value = globalSettings.webmWebhookUrl || '';
+        inputNextcloudWebdavUrl.value = globalSettings.nextcloudWebdavUrl || '';
+        inputNextcloudUsername.value = globalSettings.nextcloudUsername || '';
+        inputNextcloudPassword.value = globalSettings.nextcloudPassword || '';
+        selectAiInputSource.value = globalSettings.aiInputSource || 'text';
+        updateWebmUploadTargetUI();
+        updateAiInputSourceUI();
+        updateDynamicSettingsUI();
+ 
         resolve(globalSettings);
       });
     });
@@ -173,28 +638,78 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Save Settings ---
   btnSaveSettings.addEventListener('click', () => {
+    // Read current group names and emails from DOM inputs to get latest values
+    const groupRows = emailGroupsContainer.querySelectorAll('.email-group-item');
+    const updatedGroups = [];
+    groupRows.forEach(row => {
+      const name = row.querySelector('.group-name-input').value.trim();
+      const emails = row.querySelector('.group-emails-input').value.trim();
+      if (name) {
+        updatedGroups.push({ name, emails });
+      }
+    });
+
     const newSettings = {
       geminiApiKey: inputGeminiKey.value.trim(),
       summaryModel: selectGeminiModel.value,
-      targetEmail: inputTargetEmail.value.trim(),
+      targetEmail: updatedGroups.length > 0 ? updatedGroups[0].emails : '',
       webhookUrl: inputWebhookUrl.value.trim(),
       downloadFolder: inputDownloadFolder.value.trim().replace(/\/$/, ''),
       autoDownloadOnEnd: checkboxAutoDownload.checked,
       autoSummarize: checkboxAutoSummarize.checked,
       autoWebhook: checkboxAutoWebhook.checked,
       autoEnableCC: checkboxAutoEnableCC.checked,
-      promptTemplate: textareaPromptTemplate.value
+      promptTemplate: textareaPromptTemplate.value,
+      emailGroups: updatedGroups,
+      defaultAutoGroup: selectDefaultAutoGroup.value,
+      llmSource: selectLlmSource.value,
+      customLlmEnable: selectLlmSource.value !== 'gemini',
+      customLlmUrl: inputCustomLlmUrl.value.trim(),
+      customLlmKey: inputCustomLlmKey.value.trim(),
+      enableRecordingWorkflow: checkboxEnableRecordingWorkflow.checked,
+      recordMode: checkboxEnableRecordingWorkflow.checked ? (selectRecordMode.value === 'none' ? 'audio' : selectRecordMode.value) : 'none',
+      captureSource: selectCaptureSource ? selectCaptureSource.value : 'tab',
+      recordIncludeMic: checkboxRecordMic.checked,
+      webmUploadTarget: selectWebmUploadTarget.value,
+      webmWebhookUrl: inputWebmWebhookUrl.value.trim(),
+      nextcloudWebdavUrl: inputNextcloudWebdavUrl.value.trim(),
+      nextcloudUsername: inputNextcloudUsername.value.trim(),
+      nextcloudPassword: inputNextcloudPassword.value.trim(),
+      aiInputSource: selectAiInputSource.value
     };
 
-    chrome.storage.local.set({ settings: newSettings }, () => {
+    chrome.storage.local.set({ settings: newSettings }, async () => {
       globalSettings = newSettings;
       saveStatus.classList.add('show');
       setTimeout(() => {
         saveStatus.classList.remove('show');
       }, 2000);
       console.log("[Popup] Settings saved:", newSettings);
+
+      // Check and request microphone permission only if recording is enabled and not yet granted
+      if (newSettings.recordMode !== 'none') {
+        let hasMicPermission = false;
+        try {
+          const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
+          hasMicPermission = (permissionStatus.state === 'granted');
+        } catch (e) {
+          console.log("[Popup] Could not query microphone permission status:", e);
+        }
+
+        if (!hasMicPermission) {
+          chrome.tabs.create({ url: 'permission.html' });
+        }
+      }
     });
   });
+
+  // Manual microphone permission request button listener
+  const btnRequestPermissionManual = document.getElementById('btn-request-permission-manual');
+  if (btnRequestPermissionManual) {
+    btnRequestPermissionManual.addEventListener('click', () => {
+      chrome.tabs.create({ url: 'permission.html' });
+    });
+  }
 
   // --- Clear History ---
   const btnClearHistory = document.getElementById('btn-clear-history');
@@ -218,8 +733,30 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Active Recording Sync & Polling ---
-  const updateActiveRecordingTab = (session) => {
+  const updateActiveRecordingTab = (session, lastMeetTab = null, isManualStopped = false) => {
     if (!session) {
+      currentActiveTabId = null;
+      if (btnToggleRecording) {
+        btnToggleRecording.disabled = true;
+        btnToggleRecording.innerText = '🔴 啟動錄製';
+        btnToggleRecording.className = 'btn btn-secondary';
+      }
+      if (isManualStopped && lastMeetTab) {
+        statusDot.className = 'indicator-dot gray-dot';
+        statusText.innerText = '會議紀錄已手動結束';
+        headerPulse.className = 'pulse-dot';
+        meetingTitle.innerText = lastMeetTab.title || 'Google Meet Meeting';
+        meetingUrl.innerText = lastMeetTab.url || '';
+        lineCount.innerText = '0';
+        wordCount.innerText = '0';
+        recordTime.innerText = '00:00';
+        liveTranscript.innerHTML = '<p class="placeholder-text" style="color:var(--text-muted);text-align:center;">會議已結束並送去整理。<br>點擊下方「開始錄製新會議」按鈕可啟動新一輪錄製。</p>';
+        btnToggleCapture.disabled = false;
+        btnToggleCapture.innerText = '開始錄製新會議';
+        btnToggleCapture.className = 'btn btn-primary';
+        btnEndMeeting.disabled = true;
+        return;
+      }
       // Not in a meeting or no active session
       statusDot.className = 'indicator-dot gray-dot';
       statusText.innerText = '未在會議中';
@@ -235,8 +772,23 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    currentActiveTabId = session.tabId;
     btnToggleCapture.disabled = false;
     btnEndMeeting.disabled = false;
+    
+    if (btnToggleRecording) {
+      btnToggleRecording.disabled = false;
+      if (session.isRecording) {
+        const elapsed = session.recordingElapsedSeconds || 0;
+        const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const seconds = String(elapsed % 60).padStart(2, '0');
+        btnToggleRecording.innerText = `⏹️ 停止錄製 (${minutes}:${seconds})`;
+        btnToggleRecording.className = 'btn btn-danger';
+      } else {
+        btnToggleRecording.innerText = '🔴 啟動錄製';
+        btnToggleRecording.className = 'btn btn-secondary';
+      }
+    }
 
     // Pulse dot states
     if (session.isCapturing && session.isObserving) {
@@ -299,31 +851,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const startActiveRecordingPolling = () => {
+  function startActiveRecordingPolling() {
     if (activePollingInterval) clearInterval(activePollingInterval);
     
     // Initial fetch
     chrome.runtime.sendMessage({ type: 'GET_ACTIVE_SESSION' }, (response) => {
-      updateActiveRecordingTab(response?.activeSession);
+      updateActiveRecordingTab(response?.activeSession, response?.lastMeetTab, response?.isManualStopped);
     });
 
     // Poll every 1s
     activePollingInterval = setInterval(() => {
       chrome.runtime.sendMessage({ type: 'GET_ACTIVE_SESSION' }, (response) => {
-        updateActiveRecordingTab(response?.activeSession);
+        updateActiveRecordingTab(response?.activeSession, response?.lastMeetTab, response?.isManualStopped);
       });
     }, 1000);
-  };
+  }
 
-  const stopActiveRecordingPolling = () => {
+  function stopActiveRecordingPolling() {
     if (activePollingInterval) {
       clearInterval(activePollingInterval);
       activePollingInterval = null;
     }
-  };
+  }
 
   // Toggle active recording state from popup
   btnToggleCapture.addEventListener('click', () => {
+    if (btnToggleCapture.innerText.trim() === '開始錄製新會議') {
+      chrome.runtime.sendMessage({ type: 'START_NEW_MEETING' }, (response) => {
+        if (response && response.status === 'started') {
+          updateActiveRecordingTab(response.activeSession);
+        }
+      });
+      return;
+    }
+    
     chrome.runtime.sendMessage({ type: 'GET_ACTIVE_SESSION' }, (response) => {
       const session = response?.activeSession;
       if (session && session.tabId) {
@@ -338,6 +899,98 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
+
+  // Handle start/stop recording from popup
+  if (btnToggleRecording) {
+    btnToggleRecording.addEventListener('click', () => {
+      if (!currentActiveTabId) {
+        alert('請先在 Google Meet 開始或加入會議！');
+        return;
+      }
+
+      if (btnToggleCapture && btnToggleCapture.innerText.trim() === '開始錄製新會議') {
+        alert('請先點選「開始錄製新會議」以啟動會議字幕擷取，接著才能進行影音錄製！');
+        return;
+      }
+
+      // Check current text directly to determine start vs stop
+      const isCurrentlyRecording = btnToggleRecording.innerText.includes('停止');
+
+      if (isCurrentlyRecording) {
+        // Stop recording
+        chrome.runtime.sendMessage({ type: 'TOGGLE_MANUAL_RECORDING' }, (res) => {
+          console.log("[Popup] Stopped recording:", res);
+        });
+      } else {
+        const captureSource = selectCaptureSource ? selectCaptureSource.value : 'tab';
+        popupLogEvent('Recording', 'info', `使用者點擊啟動錄製，錄製來源設定為: ${captureSource}`);
+        
+        if (captureSource === 'desktop') {
+          popupLogEvent('Recording', 'info', `正在請求會議分頁的音訊擷取授權...`);
+          // Get tab capture stream ID for audio first (synchronous, never fails)
+          chrome.tabCapture.getMediaStreamId({ targetTabId: currentActiveTabId }, (tabStreamId) => {
+            if (chrome.runtime.lastError) {
+              popupLogEvent('Recording', 'error', `請求會議音訊擷取授權失敗: ${chrome.runtime.lastError.message}`);
+              alert('無法取得會議音訊：' + chrome.runtime.lastError.message);
+              return;
+            }
+            popupLogEvent('Recording', 'info', `成功取得會議分頁音訊 Token，正在顯示畫面分享選取對話框...`);
+            
+            // Show picker dialog from the popup directly with targetTab = null
+            // This grants permission to the extension origin rather than the Meet page origin!
+            chrome.desktopCapture.chooseDesktopMedia(['screen', 'window', 'tab'], null, (desktopStreamId) => {
+              if (chrome.runtime.lastError || !desktopStreamId) {
+                popupLogEvent('Recording', 'info', `使用者取消了畫面共用選取。`);
+                return;
+              }
+              
+              popupLogEvent('Recording', 'info', `成功選取畫面共用 (Token: ${desktopStreamId})，正在啟動錄製...`);
+              chrome.runtime.sendMessage({ 
+                type: 'START_RECORDING_WITH_DOUBLE_STREAM',
+                tabStreamId: tabStreamId,
+                desktopStreamId: desktopStreamId
+              }, (res) => {
+                console.log("[Popup] Start recording with double stream response:", res);
+                if (res && res.status === 'error') {
+                  popupLogEvent('Recording', 'error', `啟動錄製失敗: ${res.error}`);
+                  alert('啟動錄製失敗：' + res.error);
+                } else {
+                  popupLogEvent('Recording', 'success', `影音錄製已成功啟動！`);
+                }
+              });
+            });
+          });
+        } else {
+          popupLogEvent('Recording', 'info', `正在請求會議分頁的影音擷取授權...`);
+          // Start tab recording under direct user gesture in popup context
+          chrome.tabCapture.getMediaStreamId({ targetTabId: currentActiveTabId }, (streamId) => {
+            if (chrome.runtime.lastError) {
+              popupLogEvent('Recording', 'error', `請求會議影音擷取授權失敗: ${chrome.runtime.lastError.message}`);
+              alert('錄影/錄音功能啟動失敗：' + chrome.runtime.lastError.message);
+              return;
+            }
+
+            popupLogEvent('Recording', 'info', `成功取得會議分頁影音 Token，正在啟動離屏錄影程序...`);
+            console.log("[Popup] Synchronously retrieved tab capture streamId:", streamId);
+
+            // Pass the streamId to background service worker to trigger offscreen capture
+            chrome.runtime.sendMessage({
+              type: 'START_RECORDING_WITH_STREAM_ID_FROM_POPUP',
+              streamId: streamId,
+              captureSource: 'tab'
+            }, (res) => {
+              console.log("[Popup] Started tab recording with stream ID:", res);
+              if (res && res.status === 'error') {
+                popupLogEvent('Recording', 'error', `啟動離屏錄影程序失敗: ${res.error}`);
+              } else {
+                popupLogEvent('Recording', 'success', `離屏錄製已成功啟動！`);
+              }
+            });
+          });
+        }
+      }
+    });
+  }
 
   // End meeting manually
   btnEndMeeting.addEventListener('click', () => {
@@ -361,8 +1014,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadHistoryList = () => {
     chrome.storage.local.get(['history', 'autoProcessingSessions'], (result) => {
       const history = result.history || [];
-      const processingMap = result.autoProcessingSessions || {};
+      let processingMap = result.autoProcessingSessions || {};
       
+      // Clean up stale background tasks (older than 10 minutes)
+      let changed = false;
+      const now = Date.now();
+      const TEN_MINUTES = 10 * 60 * 1000;
+      for (const id in processingMap) {
+        if (processingMap[id].timestamp && (now - processingMap[id].timestamp > TEN_MINUTES)) {
+          delete processingMap[id];
+          changed = true;
+        }
+      }
+      if (changed) {
+        chrome.storage.local.set({ autoProcessingSessions: processingMap });
+      }
+
       if (history.length === 0) {
         historyListContainer.innerHTML = '<p class="placeholder-text">尚無歷史會議紀錄</p>';
         return;
@@ -382,10 +1049,17 @@ document.addEventListener('DOMContentLoaded', () => {
         html += `
           <div class="history-item ${activeClass}" data-id="${session.id}">
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-              <h4 style="margin: 0; max-width: ${isProcessing ? '120px' : '100%'}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(session.title)}</h4>
-              ${isProcessing ? '<span class="ai-processing-badge">AI 整理中...</span>' : ''}
+              <h4 style="margin: 0; max-width: ${isProcessing ? '110px' : '150px'}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(session.title)}</h4>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                ${isProcessing ? '<span class="ai-processing-badge" style="font-size:9px;padding:1px 3px;">AI...</span>' : ''}
+                <button class="btn-delete-item" data-id="${session.id}" title="刪除此紀錄" style="background: transparent; border: none; padding: 2px; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: all 0.2s;">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                  </svg>
+                </button>
+              </div>
             </div>
-            <div class="history-meta" style="margin-top: 4px;">
+            <div class="history-meta" style="margin-top: 4px; display: flex; justify-content: space-between; align-items: center;">
               <span>${dateStr}</span>
               <span>${session.transcript ? session.transcript.length : 0} 句</span>
             </div>
@@ -407,11 +1081,46 @@ document.addEventListener('DOMContentLoaded', () => {
             item.classList.add('active');
           }
         });
+
+        // Add delete button click handler
+        const btnDelete = item.querySelector('.btn-delete-item');
+        if (btnDelete) {
+          btnDelete.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent choosing the session
+            const id = btnDelete.getAttribute('data-id');
+            const session = history.find(s => s.id === id);
+            if (!session) return;
+            
+            if (confirm(`確定要刪除「${session.title}」這筆會議紀錄嗎？`)) {
+              chrome.storage.local.get(['history'], (res) => {
+                const currentHistory = res.history || [];
+                const updatedHistory = currentHistory.filter(s => s.id !== id);
+                chrome.storage.local.set({ history: updatedHistory }, () => {
+                  // If we deleted the currently selected meeting, clear the workspace view
+                  if (selectedMeeting && selectedMeeting.id === id) {
+                    selectedMeeting = null;
+                    workspaceFooter.style.display = 'none';
+                    aiPlaceholderMsg.style.display = 'none';
+                    summaryContent.style.display = 'none';
+                    btnCopyRaw.style.display = 'none';
+                    btnDownloadRaw.style.display = 'none';
+                    selectedTitle.innerText = '請從左側選擇會議或開始錄製';
+                    selectedDate.innerText = '';
+                  }
+                  loadHistoryList();
+                });
+              });
+            }
+          });
+        }
       });
     });
   };
 
   const selectMeetingSession = (session) => {
+    // Clean up any leftover manual spinners from previous tasks
+    document.getElementById('ai-loader')?.remove();
+
     selectedMeeting = session;
     selectedTitle.innerText = session.title;
     const dateStr = new Date(session.startTime).toLocaleString('zh-TW');
@@ -434,18 +1143,53 @@ document.addEventListener('DOMContentLoaded', () => {
         aiPlaceholderMsg.style.display = 'none';
         summaryContent.style.display = 'block';
         
-        let statusText = 'Gemini 正在背景整理會議紀錄，請稍候...';
+        let statusText = 'AI 正在背景整理會議紀錄，請稍候...';
         if (processingState.status === 'webhook') {
           statusText = '會議紀錄整理完成，正在傳送 Webhook 郵件，請稍候...';
+        } else if (processingState.status === 'queued') {
+          statusText = `排隊中... 您是第 ${processingState.queue_position || 1} 位<br><span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block;">預估等待時間: ${processingState.estimated_wait_seconds || 45} 秒</span>`;
+        } else if (processingState.status === 'processing') {
+          statusText = `AI 整理中... 已完成 ${processingState.progress_percent || 0}%<br><span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block;">預估剩餘時間: ${processingState.estimated_remaining_seconds || 15} 秒</span>`;
+        }
+
+        // Resume custom job polling if jobId is present
+        if (processingState.jobId && globalSettings.llmSource === 'custom') {
+          const baseUrl = (globalSettings.customLlmUrl || '').replace(/\/$/, '');
+          startCustomJobPolling(session.id, processingState.jobId, baseUrl);
         }
         
         summaryContent.innerHTML = `
           <div class="ai-processing-workspace-container">
             <div class="pulse-spinner"></div>
             <div style="font-weight: 600; color: #8b5cf6;">背景自動處理中</div>
-            <div style="font-size: 13px; color: var(--text-muted);">${statusText}</div>
+            <div style="font-size: 13px; color: var(--text-muted); text-align: center;">${statusText}</div>
+            <div style="margin-top: 15px;">
+              <button id="btn-force-reset-status" class="btn btn-secondary btn-sm" style="background: transparent; border: 1px solid rgba(255, 255, 255, 0.15); color: var(--text-muted); padding: 4px 8px; font-size: 10px; border-radius: 4px; cursor: pointer;">
+                強制重設狀態 (若卡住)
+              </button>
+            </div>
           </div>
         `;
+
+        const btnReset = document.getElementById('btn-force-reset-status');
+        if (btnReset) {
+          btnReset.addEventListener('click', () => {
+            if (confirm('您確定要強制清除背景自動處理狀態嗎？\n\n（如果背景程序已在先前中斷，此操作將會解鎖面板，讓您可以點擊一鍵整理按鈕）')) {
+              if (activeJobPollIntervals[session.id]) {
+                clearInterval(activeJobPollIntervals[session.id]);
+                delete activeJobPollIntervals[session.id];
+              }
+              chrome.storage.local.get(['autoProcessingSessions'], (res) => {
+                const map = res.autoProcessingSessions || {};
+                delete map[session.id];
+                chrome.storage.local.set({ autoProcessingSessions: map }, () => {
+                  selectMeetingSession(session);
+                  loadHistoryList();
+                });
+              });
+            }
+          });
+        }
         
         btnRunAi.disabled = true;
         btnRunAi.innerHTML = `
@@ -462,7 +1206,23 @@ document.addEventListener('DOMContentLoaded', () => {
       if (session.summary) {
         aiPlaceholderMsg.style.display = 'none';
         summaryContent.style.display = 'block';
-        summaryContent.innerHTML = parseMarkdown(session.summary);
+        
+        let renderedHtml = parseMarkdown(session.summary);
+        const timeStr = session.summaryTime ? new Date(session.summaryTime).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+        if (session.aiDurationSeconds) {
+          renderedHtml = `
+            <div class="ai-duration-tag" style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; background: rgba(16, 185, 129, 0.05); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.15); width: fit-content;">
+              <span style="display: flex; align-items: center; gap: 4px;">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="color: #10b981;">
+                  <path d="M13 3l-2 5h5l-6 13v-8H5l6-10h3z"/>
+                </svg>
+                <span>⚡ AI 本地整理耗時：${session.aiDurationSeconds.toFixed(1)} 秒</span>
+              </span>
+              ${timeStr ? `<span style="border-left: 1px solid rgba(255,255,255,0.15); padding-left: 8px;">整理時間：${timeStr}</span>` : ''}
+            </div>
+          ` + renderedHtml;
+        }
+        summaryContent.innerHTML = renderedHtml;
         btnRunAi.innerHTML = `
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L4.7 18.7c-1.07-1.78-1.7-3.87-1.7-6.7 0-6.07 4.93-11 11-11zm8 8c0 1.57-.46 3.03-1.24 4.26l1.46 1.46c1.07-1.78 1.7-3.87 1.7-6.7 0-6.07-4.93-11-11-11v3l-4-4 4-4v3c4.42 0 8 3.58 8 8z"/>
@@ -494,12 +1254,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Call Gemini API to summarize
+  // Call LLM API to summarize
   btnRunAi.addEventListener('click', async () => {
     if (!selectedMeeting) return;
     
-    const apiKey = globalSettings.geminiApiKey;
-    if (!apiKey) {
+    // Check API Key only if using official Gemini API
+    if (globalSettings.llmSource === 'gemini' && !globalSettings.geminiApiKey) {
       alert('請先在「設定」分頁中填寫您的 Gemini API Key！');
       switchTab('settings');
       return;
@@ -514,10 +1274,94 @@ document.addEventListener('DOMContentLoaded', () => {
     loader.id = 'ai-loader';
     loader.innerHTML = `
       <div class="spinner"></div>
-      <span class="loading-text">Gemini 正在整理會議紀錄，請稍候...</span>
+      <span class="loading-text">AI 正在整理會議紀錄，請稍候...</span>
     `;
     summaryResultBox.appendChild(loader);
     btnRunAi.disabled = true;
+
+    // Helper: Handle AI errors in UI
+    const handleAiError = (error) => {
+      console.error("[Popup AI Error]:", error);
+      document.getElementById('ai-loader')?.remove();
+      aiPlaceholderMsg.style.display = 'flex';
+      aiPlaceholderMsg.innerHTML = `
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="#ef4444">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 12 10 12 10-4.48 10-12S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+        </svg>
+        <p style="color:#f87171;">AI 會議紀錄整理失敗。<br>錯誤資訊: ${error.message}</p>
+      `;
+      btnRunAi.disabled = false;
+    };
+
+    // Helper: Parse and display summary result
+    const processSummaryResult = (generatedText, aiDurationSeconds = null) => {
+      let summaryText = generatedText;
+      let optimizedTranscript = "";
+
+      const splitTokens = ['=== [優化逐字稿] ===', '===[優化逐字稿]===', '優化逐字稿', '=== [優化對話] ===', '=== [優化逐字稿]'];
+      for (const token of splitTokens) {
+        if (generatedText.includes(token)) {
+          const parts = generatedText.split(token);
+          summaryText = parts[0].replace('=== [會議紀錄] ===', '').replace('=== [會議記錄] ===', '').trim();
+          optimizedTranscript = parts[1].trim();
+          break;
+        }
+      }
+
+      // Save in state object
+      selectedMeeting.summary = summaryText;
+      selectedMeeting.optimizedTranscript = optimizedTranscript;
+      selectedMeeting.summaryTime = Date.now();
+      if (aiDurationSeconds !== null) {
+        selectedMeeting.aiDurationSeconds = aiDurationSeconds;
+      }
+      
+      // Update history in chrome storage
+      chrome.storage.local.get(['history'], (res) => {
+        const history = res.history || [];
+        const index = history.findIndex(s => s.id === selectedMeeting.id);
+        if (index !== -1) {
+          history[index].summary = summaryText;
+          history[index].optimizedTranscript = optimizedTranscript;
+          history[index].summaryTime = Date.now();
+          if (aiDurationSeconds !== null) {
+            history[index].aiDurationSeconds = aiDurationSeconds;
+          }
+          chrome.storage.local.set({ history: history });
+        }
+      });
+
+      // Render summary
+      document.getElementById('ai-loader')?.remove();
+      summaryContent.style.display = 'block';
+      
+      let renderedHtml = parseMarkdown(summaryText);
+      const timeStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      if (aiDurationSeconds !== null) {
+        renderedHtml = `
+          <div class="ai-duration-tag" style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; background: rgba(16, 185, 129, 0.05); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.15); width: fit-content;">
+            <span style="display: flex; align-items: center; gap: 4px;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="color: #10b981;">
+                <path d="M13 3l-2 5h5l-6 13v-8H5l6-10h3z"/>
+              </svg>
+              <span>⚡ AI 本地整理耗時：${aiDurationSeconds.toFixed(1)} 秒</span>
+            </span>
+            <span style="border-left: 1px solid rgba(255,255,255,0.15); padding-left: 8px;">整理時間：${timeStr}</span>
+          </div>
+        ` + renderedHtml;
+      }
+      summaryContent.innerHTML = renderedHtml;
+      exportActionsRow.style.display = 'grid';
+      
+      // Update button text to "Re-run"
+      btnRunAi.innerHTML = `
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L4.7 18.7c-1.07-1.78-1.7-3.87-1.7-6.7 0-6.07 4.93-11 11-11zm8 8c0 1.57-.46 3.03-1.24 4.26l1.46 1.46c1.07-1.78 1.7-3.87 1.7-6.7 0-6.07-4.93-11-11-11v3l-4-4 4-4v3c4.42 0 8 3.58 8 8z"/>
+        </svg>
+        重新整理會議紀錄
+      `;
+      btnRunAi.disabled = false;
+    };
 
     try {
       // Build transcript text representation
@@ -537,119 +1381,191 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         finalPrompt = `${finalPrompt}\n\n[會議逐字稿]\n${transcriptText}`;
       }
+
+      const apiKey = globalSettings.geminiApiKey;
       const model = globalSettings.summaryModel || 'gemini-1.5-flash';
 
-      // Call Google Gemini API via native Fetch
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: finalPrompt
-            }]
-          }]
-        })
-      });
+      // --- BRANCH 1: Custom Async Queue Gateway (適用於 GX10) ---
+      if (globalSettings.llmSource === 'custom') {
+        const baseUrl = (globalSettings.customLlmUrl || '').replace(/\/$/, '');
+        const apiUrl = `${baseUrl}/meeting-llm/api/jobs`;
+        const headers = { 'Content-Type': 'application/json' };
+        if (globalSettings.customLlmKey) {
+          headers['Authorization'] = `Bearer ${globalSettings.customLlmKey}`;
+        }
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `HTTP error! status: ${response.status}`);
+        const jobResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({
+            title: selectedMeeting.title,
+            prompt: globalSettings.promptTemplate,
+            transcript: transcriptText
+          })
+        });
+
+        if (!jobResponse.ok) {
+          const errorText = await jobResponse.text().catch(() => '');
+          throw new Error(`閘道器伺服器錯誤！狀態碼: ${jobResponse.status} ${errorText}`);
+        }
+
+        const jobData = await jobResponse.json();
+        const jobId = jobData.job_id;
+
+        // Write initial state to storage so sidebar displays processing badge
+        chrome.storage.local.get(['autoProcessingSessions'], (res) => {
+          const map = res.autoProcessingSessions || {};
+          map[selectedMeeting.id] = {
+            status: jobData.status,
+            jobId: jobId,
+            queue_position: jobData.queue_position || 1,
+            estimated_wait_seconds: jobData.estimated_wait_seconds || 45,
+            progress_percent: 0,
+            estimated_remaining_seconds: 0,
+            timestamp: Date.now()
+          };
+          chrome.storage.local.set({ autoProcessingSessions: map });
+        });
+
+        // Delegate polling to the unified helper
+        startCustomJobPolling(selectedMeeting.id, jobId, baseUrl);
+        return; // Return early, the storage onChanged and helper handles completion/error UI
       }
 
-      const data = await response.json();
-      const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      // --- BRANCH 2: Sync API (Gemini) ---
+      let generatedText = '';
+
+      if (false) {
+        // Dead code path removed
+      } else {
+        // Call Google Gemini API via native Fetch
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: finalPrompt
+              }]
+            }]
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || `HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      }
 
       if (!generatedText) {
         throw new Error("API 回傳結構中找不到產生的文字內容。");
       }
 
-      // Parse output: split by "=== [優化逐字稿] ==="
-      let summaryText = generatedText;
-      let optimizedTranscript = "";
-
-      const splitTokens = ['=== [優化逐字稿] ===', '===[優化逐字稿]===', '優化逐字稿', '=== [優化對話] ===', '=== [優化逐字稿]'];
-      for (const token of splitTokens) {
-        if (generatedText.includes(token)) {
-          const parts = generatedText.split(token);
-          summaryText = parts[0].replace('=== [會議紀錄] ===', '').replace('=== [會議記錄] ===', '').trim();
-          optimizedTranscript = parts[1].trim();
-          break;
-        }
-      }
-
-      // Save in state object
-      selectedMeeting.summary = summaryText;
-      selectedMeeting.optimizedTranscript = optimizedTranscript;
-      
-      // Update history in chrome storage
-      chrome.storage.local.get(['history'], (res) => {
-        const history = res.history || [];
-        const index = history.findIndex(s => s.id === selectedMeeting.id);
-        if (index !== -1) {
-          history[index].summary = summaryText;
-          history[index].optimizedTranscript = optimizedTranscript;
-          chrome.storage.local.set({ history: history });
-        }
-      });
-
-      // Render summary
-      document.getElementById('ai-loader')?.remove();
-      summaryContent.style.display = 'block';
-      summaryContent.innerHTML = parseMarkdown(summaryText);
-      exportActionsRow.style.display = 'grid';
-      
-      // Update button text to "Re-run"
-      btnRunAi.innerHTML = `
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-          <path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L4.7 18.7c-1.07-1.78-1.7-3.87-1.7-6.7 0-6.07 4.93-11 11-11zm8 8c0 1.57-.46 3.03-1.24 4.26l1.46 1.46c1.07-1.78 1.7-3.87 1.7-6.7 0-6.07-4.93-11-11-11v3l-4-4 4-4v3c4.42 0 8 3.58 8 8z"/>
-        </svg>
-        重新整理會議紀錄
-      `;
+      processSummaryResult(generatedText);
 
     } catch (error) {
-      console.error("[Popup AI Error]:", error);
-      document.getElementById('ai-loader')?.remove();
-      aiPlaceholderMsg.style.display = 'flex';
-      aiPlaceholderMsg.innerHTML = `
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="#ef4444">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 12 10 12 10-4.48 10-12S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-        </svg>
-        <p style="color:#f87171;">AI 會議紀錄整理失敗。<br>錯誤資訊: ${error.message}</p>
-      `;
-    } finally {
-      btnRunAi.disabled = false;
+      handleAiError(error);
     }
   });
+
+  // --- Email Send Selection Modal Logic ---
+  let currentModalAction = null;
+
+  const openEmailModal = (title, onConfirm) => {
+    if (!emailModalOverlay) return;
+    
+    modalTitle.innerText = title;
+    currentModalAction = onConfirm;
+    
+    // Populate group dropdown
+    selectModalGroup.innerHTML = '<option value="custom">-- 自訂收件人 --</option>';
+    const groups = globalSettings.emailGroups || [];
+    groups.forEach(group => {
+      const opt = document.createElement('option');
+      opt.value = group.name;
+      opt.innerText = group.name;
+      selectModalGroup.appendChild(opt);
+    });
+    
+    // Pre-select default auto group
+    const defaultGroup = globalSettings.defaultAutoGroup || (groups.length > 0 ? groups[0].name : '');
+    if (defaultGroup && groups.some(g => g.name === defaultGroup)) {
+      selectModalGroup.value = defaultGroup;
+      const matched = groups.find(g => g.name === defaultGroup);
+      textareaModalEmails.value = matched ? matched.emails : '';
+    } else {
+      selectModalGroup.value = 'custom';
+      textareaModalEmails.value = '';
+    }
+    
+    emailModalOverlay.style.display = 'flex';
+  };
+
+  const closeEmailModal = () => {
+    if (emailModalOverlay) {
+      emailModalOverlay.style.display = 'none';
+    }
+    currentModalAction = null;
+  };
+
+  // Bind modal dropdown change event
+  if (selectModalGroup) {
+    selectModalGroup.addEventListener('change', () => {
+      const val = selectModalGroup.value;
+      if (val === 'custom') return;
+      const groups = globalSettings.emailGroups || [];
+      const matched = groups.find(g => g.name === val);
+      if (matched) {
+        textareaModalEmails.value = matched.emails;
+      }
+    });
+  }
+
+  // Bind modal close buttons
+  if (btnCloseEmailModal) btnCloseEmailModal.addEventListener('click', closeEmailModal);
+  if (btnCancelEmailModal) btnCancelEmailModal.addEventListener('click', closeEmailModal);
+  if (btnConfirmEmailSend) {
+    btnConfirmEmailSend.addEventListener('click', () => {
+      const emails = textareaModalEmails.value.trim();
+      if (currentModalAction) {
+        currentModalAction(emails);
+      }
+      closeEmailModal();
+    });
+  }
 
   // Export - Email (mailto)
   btnEmail.addEventListener('click', () => {
     if (!selectedMeeting || !selectedMeeting.summary) return;
-    const targetEmail = globalSettings.targetEmail || '';
     
-    // Extract actual subject from AI summary, fallback to meeting title
-    const aiSubject = extractSubjectFromSummary(selectedMeeting.summary, selectedMeeting.title);
-    const subject = encodeURIComponent(`【自動會議紀錄】${aiSubject}`);
-    
-    // Convert summary markdown to clean plain text for email
-    const cleanSummary = convertMarkdownToPlainText(selectedMeeting.summary);
-    
-    // Construct rich email body
-    const dateStr = new Date(selectedMeeting.startTime).toLocaleString('zh-TW');
-    let emailBody = `會議主題：${selectedMeeting.title}\n會議時間：${dateStr}\n會議連結：${selectedMeeting.url}\n\n=======================\n會議摘要與紀要：\n\n${cleanSummary}`;
-    const body = encodeURIComponent(emailBody);
-    
-    const mailtoUrl = `mailto:${targetEmail}?subject=${subject}&body=${body}`;
-    
-    // Open system mail client
-    window.open(mailtoUrl, '_blank');
+    openEmailModal('發送電子郵件 (選擇收件人)', (emails) => {
+      // Extract actual subject from AI summary, fallback to meeting title
+      const aiSubject = extractSubjectFromSummary(selectedMeeting.summary, selectedMeeting.title);
+      const subject = encodeURIComponent(`【自動會議紀錄】${aiSubject}`);
+      
+      // Convert summary markdown to clean plain text for email
+      const cleanSummary = convertMarkdownToPlainText(selectedMeeting.summary);
+      
+      // Construct rich email body
+      const dateStr = new Date(selectedMeeting.startTime).toLocaleString('zh-TW');
+      let emailBody = `會議主題：${selectedMeeting.title}\n會議時間：${dateStr}\n會議連結：${selectedMeeting.url}\n\n=======================\n會議摘要與紀要：\n\n${cleanSummary}`;
+      const body = encodeURIComponent(emailBody);
+      
+      const mailtoUrl = `mailto:${emails}?subject=${subject}&body=${body}`;
+      
+      // Open system mail client
+      window.open(mailtoUrl, '_blank');
+    });
   });
 
   // Export - Webhook
-  btnWebhook.addEventListener('click', async () => {
+  btnWebhook.addEventListener('click', () => {
     if (!selectedMeeting || !selectedMeeting.summary) return;
     const webhookUrl = globalSettings.webhookUrl;
     if (!webhookUrl) {
@@ -658,47 +1574,45 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    btnWebhook.disabled = true;
-    btnWebhook.innerText = '傳送中...';
+    openEmailModal('傳送至 Webhook (選擇收件人)', async (emails) => {
+      btnWebhook.disabled = true;
+      const originalText = btnWebhook.innerHTML;
+      btnWebhook.innerText = '傳送中...';
 
-    try {
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain'
-        },
-        body: JSON.stringify({
-          id: selectedMeeting.id,
-          title: selectedMeeting.title,
-          url: selectedMeeting.url,
-          startTime: selectedMeeting.startTime,
-          startTimeStr: new Date(selectedMeeting.startTime).toISOString(),
-          summary: selectedMeeting.summary,
-          summaryPlainText: convertMarkdownToPlainText(selectedMeeting.summary),
-          summaryHtml: parseMarkdownToHtml(selectedMeeting.summary),
-          aiSubject: extractSubjectFromSummary(selectedMeeting.summary, selectedMeeting.title),
-          transcript: selectedMeeting.transcript,
-          targetEmail: globalSettings.targetEmail
-        })
-      });
+      try {
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain'
+          },
+          body: JSON.stringify({
+            id: selectedMeeting.id,
+            title: selectedMeeting.title,
+            url: selectedMeeting.url,
+            startTime: selectedMeeting.startTime,
+            startTimeStr: new Date(selectedMeeting.startTime).toISOString(),
+            summary: selectedMeeting.summary,
+            summaryPlainText: convertMarkdownToPlainText(selectedMeeting.summary),
+            summaryHtml: parseMarkdownToHtml(selectedMeeting.summary),
+            aiSubject: extractSubjectFromSummary(selectedMeeting.summary, selectedMeeting.title),
+            transcript: selectedMeeting.transcript,
+            targetEmail: emails
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error(`HTTP 錯誤狀態碼: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`HTTP 錯誤狀態碼: ${response.status}`);
+        }
+
+        alert('會議紀錄已成功傳送至指定的 Webhook！');
+      } catch (error) {
+        console.error("[Popup Webhook Error]:", error);
+        alert(`Webhook 傳送失敗。\n${error.message}`);
+      } finally {
+        btnWebhook.disabled = false;
+        btnWebhook.innerHTML = originalText;
       }
-
-      alert('會議紀錄已成功傳送至指定的 Webhook！');
-    } catch (error) {
-      console.error("[Popup Webhook Error]:", error);
-      alert(`Webhook 傳送失敗。\n${error.message}`);
-    } finally {
-      btnWebhook.disabled = false;
-      btnWebhook.innerHTML = `
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-          <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-2 14H6v-2h12v2zm0-4H6v-2h12v2zm0-4H6V8h12v2z"/>
-        </svg>
-        Webhook 發送
-      `;
-    }
+    });
   });
 
   // Export - Copy to Clipboard
@@ -1306,4 +2220,18 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   initPopup();
+  } catch (globalErr) {
+    console.error("[Popup] Global initialization crashed:", globalErr);
+    chrome.storage.local.get(['systemLogs'], (res) => {
+      const logs = res.systemLogs || [];
+      logs.unshift({
+        timestamp: new Date().toISOString(),
+        module: 'Popup',
+        type: 'error',
+        message: `外掛 UI 初始化崩潰: ${globalErr.message}\n堆疊: ${globalErr.stack}`
+      });
+      chrome.storage.local.set({ systemLogs: logs });
+    });
+    alert("外掛 UI 載入失敗，錯誤已寫入日誌。原因：" + globalErr.message);
+  }
 });

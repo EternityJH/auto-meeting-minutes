@@ -39,6 +39,12 @@
       </svg>
       設定
     </button>
+    <button class="tab-btn" data-tab="system-logs">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+      </svg>
+      任務日誌
+    </button>
   </nav>
 
   <!-- Content Containers -->
@@ -73,8 +79,9 @@
           </div>
         </div>
         <div class="action-btn-row">
-          <button class="btn btn-secondary" id="btn-toggle-capture">暫停錄製</button>
-          <button class="btn btn-danger" id="btn-end-meeting">結束並整理</button>
+          <button class="btn btn-secondary" id="btn-toggle-capture" style="flex: 1;">暫停字幕</button>
+          <button class="btn btn-secondary" id="btn-toggle-recording" style="flex: 1;">🔴 啟動錄製</button>
+          <button class="btn btn-danger" id="btn-end-meeting" style="flex: 1;">結束並整理</button>
         </div>
       </div>
     </section>
@@ -88,7 +95,7 @@
             <p class="placeholder-text">尚無會議紀錄</p>
           </div>
           <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); text-align: center;">
-            <button id="btn-clear-history" style="background: transparent; border: none; color: #ef4444; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; transition: opacity 0.2s; opacity: 0.8; margin-bottom: 4px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+            <button id="btn-clear-history" style="background: transparent; border: none; color: #ef4444; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; transition: opacity 0.2s; opacity: 0.8; margin-bottom: 4px;">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
                 <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
               </svg>
@@ -157,73 +164,295 @@
     <!-- Settings Tab -->
     <section id="settings" class="tab-content">
       <div class="card settings-card">
-        <h2>系統整合設定</h2>
-        <div class="form-group">
-          <div class="form-label-row">
-            <label for="gemini-key">Gemini API Key</label>
-            <a href="tutorial.html" target="_blank" class="help-link">如何取得 API Key？</a>
+        
+        <!-- Workflow Toggles at the very top -->
+        <div class="workflow-toggles-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+          <div class="step-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px; margin-bottom: 12px;">
+            <span class="step-badge" style="background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);">⚙️</span>
+            <h3 style="font-size: 13px; font-weight: 700; margin: 0; color: var(--text-primary);">自動化流程啟用開關</h3>
           </div>
-          <input type="password" id="gemini-key" placeholder="輸入您的 Gemini API Key">
-          <span class="help-text">用於會議紀錄自動整理，資料僅存於瀏覽器 local storage。</span>
-        </div>
-        <div class="form-group">
-          <label for="gemini-model">Gemini 模型</label>
-          <select id="gemini-model">
-            <option value="gemini-3.5-flash">Gemini 3.5 Flash (最新高效能 - 推薦)</option>
-            <option value="gemini-3.1-pro">Gemini 3.1 Pro (最新旗艦推理，適用極長或複雜會議)</option>
-            <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite (極速、超低耗能)</option>
-            <option value="gemini-2.5-flash">Gemini 2.5 Flash (高效穩定款)</option>
-            <option value="gemini-2.5-pro">Gemini 2.5 Pro (推理重型款)</option>
-            <option value="gemini-1.5-flash">Gemini 1.5 Flash (經典款)</option>
-            <option value="gemini-1.5-pro">Gemini 1.5 Pro (經典長文本)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="target-email">收件人 Email</label>
-          <input type="text" id="target-email" placeholder="email1@gmail.com, email2@gmail.com">
-          <span class="help-text">預設收件地址。若要傳送給多個人，請使用「英文半形逗號 (,)」隔開。</span>
-        </div>
-        <div class="form-group">
-          <div class="form-label-row">
-            <label for="webhook-url">Webhook URL (選填)</label>
-            <a href="tutorial.html#gas-section" target="_blank" class="help-link">如何架設自動寄信 Webhook？</a>
+          
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="auto-enable-cc" checked>
+            <label for="auto-enable-cc">1. 加入 Google Meet 會議時自動開啟 CC 字幕</label>
           </div>
-          <input type="url" id="webhook-url" placeholder="https://script.google.com/macros/s/...">
-          <span class="help-text">填寫 Google Apps Script 網頁應用程式網址，用於自動寄信。</span>
+          
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="auto-summarize" checked>
+            <label for="auto-summarize">2. 會議結束時背景自動進行 AI 整理</label>
+          </div>
+          
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="enable-recording-workflow">
+            <label for="enable-recording-workflow">3. 啟用會議語音/影音錄製與備份</label>
+          </div>
+          
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="auto-webhook">
+            <label for="auto-webhook" id="label-auto-webhook">4. AI 整理完成後自動傳送 Webhook 寄信</label>
+          </div>
+          
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="auto-download" checked>
+            <label for="auto-download">5. 會議結束時自動下載本機會議紀錄網頁 (.html)</label>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="download-folder">本機存檔子資料夾</label>
-          <input type="text" id="download-folder" value="auto-meeting-minutes">
-          <span class="help-text">位於「下載 (Downloads)」目錄下。</span>
+
+        <!-- Section 1: AI Settings (shown if auto-summarize is checked) -->
+        <div id="section-config-ai" class="workflow-step-card" style="display: none;">
+          <div class="step-header">
+            <span class="step-badge">1</span>
+            <h3>配置 1：AI 整理模型與指示設定</h3>
+          </div>
+          
+          <div class="form-group">
+            <label for="llm-source">AI 來源類型</label>
+            <select id="llm-source" style="width: 100%;">
+              <option value="gemini">Google Gemini API (官方雲端服務 - 推薦)</option>
+              <option value="custom">自訂 LLM 閘道器 (適用本機 LLM / Ollama)</option>
+            </select>
+          </div>
+          
+          <div class="form-group" style="margin-top: 8px;">
+            <label for="select-ai-input-source">AI 整理分析對象</label>
+            <select id="select-ai-input-source" style="width: 100%;">
+              <option value="text">會議逐字稿文字 (使用 CC 擷取內容分析)</option>
+              <option value="file">會議錄音檔/影音檔 (多模態直接分析)</option>
+            </select>
+            <span class="help-text" id="ai-input-source-help">預設讀取會議中擷取的 CC 字幕進行整理。</span>
+          </div>
+
+          <!-- Gemini Settings Panel -->
+          <div id="gemini-settings-panel">
+            <div class="form-group" style="margin-top: 8px;">
+              <div class="form-label-row">
+                <label for="gemini-key">Gemini API Key</label>
+                <a href="tutorial.html" target="_blank" class="help-link">如何取得 API Key？</a>
+              </div>
+              <input type="password" id="gemini-key" placeholder="輸入您的 Gemini API Key">
+              <span class="help-text">資料僅存於瀏覽器 local storage，絕不外流。</span>
+            </div>
+            <div class="form-group" style="margin-top: 8px;">
+              <label for="gemini-model">Gemini 模型</label>
+              <select id="gemini-model" style="width: 100%;">
+                <option value="gemini-3.5-flash">Gemini 3.5 Flash (最新高效能 - 推薦)</option>
+                <option value="gemini-3.1-pro">Gemini 3.1 Pro (最新旗艦推理，適用複雜會議)</option>
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite (極速、低消耗)</option>
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash (高效穩定款)</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro (推理重型款)</option>
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash (經典款)</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro (經典長文本)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Custom LLM Settings Panel -->
+          <div id="custom-llm-panel" style="display: none; border-left: 2px solid var(--primary-color); padding-left: 12px; margin-top: 8px; margin-bottom: 12px;">
+            <div class="form-group">
+              <label for="custom-llm-url">API Base URL</label>
+              <input type="url" id="custom-llm-url" placeholder="例如：http://192.168.1.100:11434/v1">
+              <span class="help-text">Ollama 預設為 http://[IP]:11434/v1，vLLM 預設為 http://[IP]:8000/v1</span>
+            </div>
+            <div class="form-group" style="margin-top: 8px;">
+              <label for="custom-llm-key">API Key (本機服務若無金鑰防護可留空)</label>
+              <input type="password" id="custom-llm-key" placeholder="輸入 API 金鑰">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 12px;">
+            <label for="prompt-template">AI 整理 Prompt 指示</label>
+            <textarea id="prompt-template" rows="4" placeholder="例如：請將會議逐字稿整理成精美的會議紀錄，包含主旨、討論重點、決議與待辦事項..."></textarea>
+            <span class="help-text">請輸入給 AI 的會議摘要指令，系統會自動在指令下方附上逐字稿進行分析。</span>
+          </div>
         </div>
-        <div class="form-group checkbox-group">
-          <input type="checkbox" id="auto-download" checked>
-          <label for="auto-download">會議結束時自動下載會議紀錄檔案 (.html)</label>
+
+        <!-- Section 2: Recording and Nextcloud Settings (shown if enable-recording-workflow is checked) -->
+        <div id="section-config-recording" class="workflow-step-card" style="display: none;">
+          <div class="step-header">
+            <span class="step-badge">2</span>
+            <h3>配置 2：會議錄音與雲端儲存設定</h3>
+          </div>
+          
+          <div class="form-group">
+            <label for="select-record-mode">錄製會議模式</label>
+            <select id="select-record-mode" style="width: 100%;">
+              <option value="audio">僅錄製會議聲音 (Audio WebM - 推薦)</option>
+              <option value="video">錄製會議畫面與聲音 (Video WebM)</option>
+            </select>
+            <span class="help-text">首次會議錄音時，瀏覽器會提示要求「麥克風」與「共用此分頁」音訊授權。</span>
+          </div>
+
+          <div class="form-group" id="group-capture-source" style="margin-top: 8px; display: none;">
+            <label for="select-capture-source">影音錄製來源</label>
+            <select id="select-capture-source" style="width: 100%;">
+              <option value="tab">僅錄製 Google Meet 會議分頁 (推薦 - 支援背景錄影)</option>
+              <option value="desktop" disabled>共用整個螢幕/特定視窗 (瀏覽器安全限制 - 不支援背景錄製)</option>
+            </select>
+            <span class="help-text">如果會議中會另開新視窗分享投影片，請選擇「共用整個螢幕」並在啟動時選取該螢幕。</span>
+          </div>
+          
+          <div class="form-group checkbox-group" id="group-record-mic" style="margin-top: 8px;">
+            <input type="checkbox" id="checkbox-record-mic" checked>
+            <label for="checkbox-record-mic">錄製時包含我的麥克風聲音 (將雙方聲音混音)</label>
+          </div>
+
+          <div style="margin-top: 8px; margin-bottom: 12px;">
+            <button type="button" id="btn-request-permission-manual" style="padding: 6px 12px; font-size: 11px; background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); color: #c084fc; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s; width: 100%; justify-content: center;">
+              🔒 點此啟用/測試麥克風與分頁錄音權限
+            </button>
+          </div>
+
+          <div class="form-group" style="margin-top: 12px;">
+            <label for="select-webm-upload-target">會議結束自動上傳錄音檔</label>
+            <select id="select-webm-upload-target" style="width: 100%;">
+              <option value="none">不啟用自動上傳 (僅儲存於本機)</option>
+              <option value="webhook">上傳至自訂 Webhook (傳送給自建 AI 伺服器)</option>
+              <option value="nextcloud">直接上傳至 Nextcloud (WebDAV 直傳 - 推薦)</option>
+            </select>
+          </div>
+          
+          <!-- Webhook Config Panel -->
+          <div id="panel-webm-webhook-config" style="display: none; border-left: 2px solid var(--primary-color); padding-left: 12px; margin-top: 8px;">
+            <div class="form-group">
+              <label for="webm-webhook-url">Webhook URL</label>
+              <input type="url" id="webm-webhook-url" placeholder="http://192.168.1.100:8000/webhook/meeting-end">
+              <span class="help-text">將以 POST Multipart/Form-data 方式傳送音檔（欄位名稱為 file）。</span>
+            </div>
+          </div>
+          
+          <!-- Nextcloud Config Panel -->
+          <div id="panel-nextcloud-config" style="display: none; border-left: 2px solid var(--primary-color); padding-left: 12px; margin-top: 8px;">
+            <div class="form-group">
+              <label for="nextcloud-webdav-url">Nextcloud WebDAV URL</label>
+              <input type="url" id="nextcloud-webdav-url" placeholder="例如：https://nc.example.com/remote.php/dav/files/username/folder">
+              <span class="help-text">請填寫完整的資料夾 WebDAV 直傳網址，結尾不需加斜線 /</span>
+            </div>
+            <div class="form-group" style="margin-top: 8px;">
+              <label for="nextcloud-username">Nextcloud 用戶名</label>
+              <input type="text" id="nextcloud-username" placeholder="輸入 Nextcloud 帳號">
+            </div>
+            <div class="form-group" style="margin-top: 8px;">
+              <label for="nextcloud-password">Nextcloud 密碼/應用程式專用密碼</label>
+              <input type="password" id="nextcloud-password" placeholder="輸入產生的應用程式密碼金鑰">
+            </div>
+          </div>
         </div>
-        <div class="form-group checkbox-group">
-          <input type="checkbox" id="auto-summarize" checked>
-          <label for="auto-summarize">會議結束時自動進行 AI 整理</label>
+
+        <!-- Section 3: Webhook & Email Settings (shown if auto-webhook is checked) -->
+        <div id="section-config-webhook" class="workflow-step-card" style="display: none;">
+          <div class="step-header">
+            <span class="step-badge">3</span>
+            <h3>配置 3：分析結果電子郵件與自動化分發設定</h3>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label style="font-weight: 600;">收件人群組管理 (電子郵件分發)</label>
+              <button class="btn btn-secondary btn-sm" id="btn-add-email-group" style="padding: 2px 6px; font-size: 10px; height: auto;">+ 新增收件群組</button>
+            </div>
+            <div id="email-groups-container" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px; max-height: 150px; overflow-y: auto; padding-right: 4px;">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+          
+          <div class="form-group" style="margin-top: 8px;">
+            <label for="default-auto-group">自動發信預設群組</label>
+            <select id="default-auto-group" style="width: 100%;">
+              <!-- Rendered by JS -->
+            </select>
+            <span class="help-text">會議結束背景自動整理後，會自動寄送會議紀錄信件到此群組。</span>
+          </div>
+
+          <div class="form-group" style="margin-top: 8px;">
+            <div class="form-label-row">
+              <label for="webhook-url">寄信 Webhook URL</label>
+              <a href="tutorial.html#gas-section" target="_blank" class="help-link">如何架設自動寄信 Webhook？</a>
+            </div>
+            <input type="url" id="webhook-url" placeholder="https://script.google.com/macros/s/...">
+            <span class="help-text">填寫 Google Apps Script 網頁應用程式網址，用於自動寄信與推送。</span>
+          </div>
         </div>
-        <div class="form-group checkbox-group">
-          <input type="checkbox" id="auto-webhook">
-          <label for="auto-webhook" id="label-auto-webhook">AI 整理完成後自動傳送 Webhook</label>
+
+        <!-- Section 4: Local Backup File Settings (shown if auto-download is checked or recording is enabled) -->
+        <div id="section-config-local" class="workflow-step-card" style="display: none;">
+          <div class="step-header">
+            <span class="step-badge">4</span>
+            <h3>配置 4：本機備份存檔目錄設定</h3>
+          </div>
+          <div class="form-group">
+            <label for="download-folder">本機存檔子資料夾名稱</label>
+            <input type="text" id="download-folder" value="auto-meeting-minutes">
+            <span class="help-text">儲存於您電腦的「下載 (Downloads)」目錄下。</span>
+          </div>
         </div>
-        <div class="form-group checkbox-group">
-          <input type="checkbox" id="auto-enable-cc" checked>
-          <label for="auto-enable-cc">加入會議時自動開啟 CC 字幕</label>
-        </div>
-        <div class="form-group">
-          <label for="prompt-template">AI 整理 Prompt 指示</label>
-          <textarea id="prompt-template" rows="5" placeholder="例如：請將會議逐字稿整理成精美的會議紀錄，包含主旨、討論重點、決議與待辦事項..."></textarea>
-          <span class="help-text">請輸入給 AI 的整理指令。系統會自動在下方附上會議逐字稿。</span>
-        </div>
-        <div class="settings-actions">
+
+        <div class="settings-actions" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 15px;">
           <span class="save-status" id="save-status">設定已儲存</span>
           <button class="btn btn-primary" id="btn-save-settings">儲存設定</button>
         </div>
       </div>
     </section>
+
+    <!-- System Logs Tab -->
+    <section class="tab-content" id="system-logs" style="height: 100%; overflow: hidden;">
+      <div class="card" style="height: 100%; display: flex; flex-direction: column; margin-bottom: 0;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+          <h2 style="font-size: 14px; font-weight: 600; margin: 0;">運行與任務日誌</h2>
+          <div style="display: flex; gap: 5px;">
+            <button class="btn btn-secondary btn-sm" id="btn-download-logs" style="padding: 2px 6px; font-size: 10px; height: auto;">下載日誌</button>
+            <button class="btn btn-secondary btn-sm" id="btn-clear-logs" style="padding: 2px 6px; font-size: 10px; height: auto;">清除日誌</button>
+          </div>
+        </div>
+        <div class="log-filters" style="margin-top: 10px; display: flex; gap: 8px; margin-bottom: 10px;">
+          <select id="log-filter-module" style="font-size: 11px; padding: 4px; border-radius: 4px; background: rgba(15,23,42,0.6); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer;">
+            <option value="all">-- 所有模組 --</option>
+            <option value="Recording">會議錄製</option>
+            <option value="Upload">雲端上傳</option>
+            <option value="AI Summary">AI 整理</option>
+            <option value="Email Webhook">信件發送</option>
+          </select>
+          <select id="log-filter-type" style="font-size: 11px; padding: 4px; border-radius: 4px; background: rgba(15,23,42,0.6); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer;">
+            <option value="all">-- 所有等級 --</option>
+            <option value="success">成功 (Success)</option>
+            <option value="error">錯誤 (Error)</option>
+            <option value="info">資訊 (Info)</option>
+            <option value="warning">警告 (Warning)</option>
+          </select>
+        </div>
+        <div class="log-list-container" id="log-list-container" style="flex: 1; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.15); margin-bottom: 10px;">
+          <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 11px;">目前尚無運行日誌</div>
+        </div>
+      </div>
+    </section>
   </main>
+
+  <!-- Send Email Confirmation Modal -->
+  <div class="modal-overlay" id="email-modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-title">選擇收件人</h3>
+        <button class="modal-close" id="btn-close-email-modal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 15px 0 0 0;">
+        <div class="form-group">
+          <label for="modal-group-select">快速選取群組</label>
+          <select id="modal-group-select" style="width: 100%; margin-top: 4px;">
+            <option value="custom">-- 自訂收件人 --</option>
+            <!-- Rendered by JS -->
+          </select>
+        </div>
+        <div class="form-group" style="margin-top: 12px; display: flex; flex-direction: column;">
+          <label for="modal-emails-input">收件人 Email 清單</label>
+          <textarea id="modal-emails-input" rows="3" style="width: 100%; margin-top: 4px; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-primary); font-family: monospace; font-size: 11px; box-sizing: border-box; resize: vertical;" placeholder="example1@gmail.com, example2@gmail.com"></textarea>
+          <span class="help-text" style="font-size: 10px; color: var(--text-muted); margin-top: 4px; display: block;">多個信箱請以英文半形逗號 (,) 隔開。</span>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-secondary" id="btn-cancel-email-modal" style="padding: 6px 12px; font-size: 12px; height: auto;">取消</button>
+        <button class="btn btn-primary" id="btn-confirm-email-send" style="padding: 6px 16px; font-size: 12px; height: auto;">確認發送</button>
+      </div>
+    </div>
+  </div>
 
   <script src="popup.js"></script>
 </body>

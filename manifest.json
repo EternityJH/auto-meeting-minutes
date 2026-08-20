@@ -5,7 +5,11 @@
   "description": "開啟 Google Meet 字幕時自動擷取內容並存檔，會議結束後可一鍵使用 Gemini API 整理會議紀錄並寄出 Email。",
   "permissions": [
     "storage",
-    "downloads"
+    "downloads",
+    "offscreen",
+    "tabCapture",
+    "activeTab",
+    "desktopCapture"
   ],
   "host_permissions": [
     "https://meet.google.com/*",
