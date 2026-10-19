@@ -1,0 +1,16 @@
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Cloud credentials must never be committed
+secrets/
+**/service-account.json
+**/credentials.json
+
+# Local runtime artifacts
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+

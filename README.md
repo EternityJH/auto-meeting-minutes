@@ -48,3 +48,11 @@
 ## 🔒 隱私與安全性聲明
 * 您的 API Key 與會議資料 **100% 儲存在您的瀏覽器本機快取 (chrome.storage.local) 中**，擴充功能絕無後台伺服器，絕不會將您的敏感金鑰傳送給任何第三方。
 * 只有當您啟用 Webhook 時，擴充功能才會將該場會議紀錄 POST 給您自己架設的 Google Apps Script。
+
+---
+
+## 🧭 Google Drive 錄影自動化（設計中）
+
+本專案正在設計一條可與 Chrome 擴充功能獨立運作的自動化流程：由 Google Apps Script 每 5 分鐘檢查指定 Drive 資料夾，只有發現新錄影時才啟動 Cloud Run 與 AI，以避免空輪詢持續消耗 token。此流程預設以 OpenAI 做說話者分離轉錄與結構化會議摘要，且不自動 fallback 到其他供應商。
+
+完整架構、狀態機、API、安全性與分階段實作方式請見 [Google Drive 自動會議紀錄系統設計](docs/drive-automation-design.md)；帳號、API key 與資料夾的準備方式請見 [OpenAI 優先設定](docs/openai-setup.md)。
