@@ -882,7 +882,7 @@ const finalizeMeeting = async () => {
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // If active session tab URL changed away from Google Meet, finalize
   if (activeSession && activeSession.tabId === tabId && changeInfo.url) {
-    const meetCodeRegex = /meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i;
+    const meetCodeRegex = /^https:\/\/meet\.google\.com\/(?:meet\/)?[a-z]{3}-[a-z]{4}-[a-z]{3}\/?(?:[?#].*)?$/i;
     if (!meetCodeRegex.test(changeInfo.url)) {
       console.log(`[Background] Tab ${tabId} navigated away from Meet. Finalizing meeting...`);
       await finalizeMeeting();

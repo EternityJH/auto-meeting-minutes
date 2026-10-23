@@ -7,8 +7,8 @@
   // Only inject in valid Google Meet meetings
   const isMeetingPage = () => {
     const path = window.location.pathname.substring(1);
-    // Google Meet codes are abc-defg-hij
-    const meetCodeRegex = /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/i;
+    // Support both /abc-defg-hij and /meet/abc-defg-hij meeting URLs.
+    const meetCodeRegex = /^(?:meet\/)?[a-z]{3}-[a-z]{4}-[a-z]{3}\/?$/i;
     return meetCodeRegex.test(path);
   };
 
